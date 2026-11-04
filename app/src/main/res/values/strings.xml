@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kid Local TV</string>
+
+    <!-- Setup / manage -->
+    <string name="setup_title">Welcome! Let\'s add some videos</string>
+    <string name="manage_title">Manage videos</string>
+    <string name="setup_step1">1. Connect a phone or computer to the same Wi-Fi as this TV.</string>
+    <string name="setup_step2">2. Open this address in its web browser, or scan the QR code:</string>
+    <string name="setup_step3">3. Upload videos. Put each show in its own folder – a folder is a series.</string>
+    <string name="server_ready">Waiting for videos… keep this screen open while uploading.</string>
+    <string name="no_network">This TV isn\'t on a network. Connect it to Wi-Fi or Ethernet.</string>
+    <string name="server_failed">Couldn\'t start the import server. Try restarting the app.</string>
+    <string name="count_none">No videos on the TV yet.</string>
+    <plurals name="count_videos">
+        <item quantity="one">%1$d video in %2$d folder(s) on the TV</item>
+        <item quantity="other">%1$d videos in %2$d folder(s) on the TV</item>
+    </plurals>
+    <string name="start_watching">Start watching</string>
+    <string name="back_to_watching">Back to watching</string>
+    <string name="remote_help">On the remote: ▲ ▼ change video · ▶ series mode · ◀ shuffle mode · OK pause · hold OK to come back here</string>
+
+    <!-- Player -->
+    <string name="mode_shuffle">🔀  Shuffle</string>
+    <string name="mode_series">📺  Series</string>
+    <string name="episode_detail">%1$s · %2$d of %3$d</string>
+    <string name="hint_shuffle">"▲ ▼ random video     ▶ series mode"</string>
+    <string name="hint_series">"▲ previous     ▼ next     ◀ shuffle"</string>
+    <string name="series_mode_on">Series mode: %1$s</string>
+    <string name="shuffle_mode_on">Shuffle mode</string>
+    <string name="only_episode">This is the only video in this folder</string>
+    <string name="cannot_play">Couldn\'t play \"%1$s\" – skipping</string>
+    <string name="nothing_playable">None of the videos could be played</string>
+</resources>

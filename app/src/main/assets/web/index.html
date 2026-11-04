@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kid Local TV – Import</title>
+<style>
+  :root { --bg:#10131a; --card:#1b2030; --text:#eef1f7; --muted:#9aa3b8; --accent:#ffb627; --ok:#4cd17a; --bad:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  p.sub { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border-radius: 14px; padding: 18px; margin-bottom: 18px; }
+  label { display:block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+  input[type=text], input[type=url] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #333b52; background:#11151f; color:var(--text); font-size:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .row > div { flex:1 1 220px; }
+  button { background: var(--accent); color:#1b1300; border:0; border-radius:8px; padding:10px 16px; font-weight:600; font-size:15px; cursor:pointer; }
+  button.secondary { background:#2c3449; color:var(--text); }
+  button.danger { background:transparent; color:var(--bad); padding:4px 8px; }
+  button:disabled { opacity:.5; cursor:default; }
+  #drop { margin-top:14px; border:2px dashed #3a4460; border-radius:12px; padding:28px 12px; text-align:center; color:var(--muted); cursor:pointer; }
+  #drop.over { border-color: var(--accent); color: var(--text); }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .item { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #262c3e; font-size:15px; }
+  .item:last-child { border-bottom:0; }
+  .item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .size { color: var(--muted); font-size: 13px; white-space:nowrap; }
+  progress { width: 140px; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+  details { margin-bottom: 8px; }
+  summary { cursor:pointer; font-weight:600; padding:6px 0; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>📺 Kid Local TV</h1>
+  <p class="sub">Send videos to the TV. Put each show in its own folder — the folder becomes a series, and files play in name order (Episode 1, Episode 2, …).</p>
+
+  <section class="card">
+    <h2>Upload from this device</h2>
+    <div class="row">
+      <div>
+        <label for="folder">Folder / series name</label>
+        <input id="folder" type="text" list="folders" placeholder="e.g. Nature Shows (leave empty for Unsorted)">
+        <datalist id="folders"></datalist>
+      </div>
+    </div>
+    <div id="drop">Drop video files here, or <u>click to choose</u> (you can pick a whole folder too)</div>
+    <input id="files" type="file" accept="video/*,.mkv,.avi,.ts,.m2ts,.flv" multiple hidden>
+    <input id="dir" type="file" webkitdirectory multiple hidden>
+    <div class="row" style="margin-top:10px">
+      <button class="secondary" id="pickDir" type="button">Choose a folder…</button>
+    </div>
+    <p class="hint">Picking a folder uses each file's sub-folder as its series name.</p>
+    <div id="queue"></div>
+  </section>
+
+  <section class="card">
+    <h2>Import from a link on your network</h2>
+    <p class="hint" style="margin-top:0">Got a NAS or media server? Paste a direct link to a video file and the TV will download it.</p>
+    <div class="row">
+      <div><label for="url">Video URL</label><input id="url" type="url" placeholder="http://192.168.1.20/videos/episode1.mp4"></div>
+      <button id="fetchBtn" type="button">Download to TV</button>
+    </div>
+    <div id="downloads"></div>
+  </section>
+
+  <section class="card">
+    <h2>Library on the TV <span id="total" class="size"></span></h2>
+    <div id="library" class="empty">Loading…</div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n < 1e6 ? (n/1e3).toFixed(0)+' KB' : n < 1e9 ? (n/1e6).toFixed(1)+' MB' : (n/1e9).toFixed(2)+' GB';
+const esc = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const VIDEO = /\.(mp4|m4v|mkv|webm|mov|avi|ts|m2ts|3gp|flv|mpg|mpeg)$/i;
+
+let queue = [], uploading = false;
+
+function addFiles(fileList, fromDir) {
+  const base = $('folder').value.trim();
+  for (const f of fileList) {
+    if (!VIDEO.test(f.name)) continue;
+    let folder = base;
+    if (fromDir && f.webkitRelativePath) {
+      const parts = f.webkitRelativePath.split('/'); parts.pop();
+      folder = [base, ...parts].filter(Boolean).join('/');
+    }
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `<span class="name">${esc((folder ? folder + ' / ' : '') + f.name)}</span><span><progress max="100" value="0"></progress> <span class="size">${fmt(f.size)}</span></span>`;
+    $('queue').appendChild(row);
+    queue.push({ file: f, folder, row });
+  }
+  pump();
+}
+
+function pump() {
+  if (uploading || !queue.length) return;
+  uploading = true;
+  const job = queue.shift();
+  const xhr = new XMLHttpRequest();
+  const q = `folder=${encodeURIComponent(job.folder)}&name=${encodeURIComponent(job.file.name)}`;
+  xhr.open('PUT', '/api/upload?' + q);
+  const bar = job.row.querySelector('progress');
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.value = e.loaded / e.total * 100; };
+  const finish = (ok, msg) => {
+    job.row.lastElementChild.innerHTML = ok ? '<span class="ok">✓ on TV</span>' : `<span class="bad">✗ ${esc(msg)}</span>`;
+    uploading = false; loadLibrary(); pump();
+  };
+  xhr.onload = () => {
+    let msg = 'failed';
+    try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
+    finish(xhr.status === 200, msg);
+  };
+  xhr.onerror = () => finish(false, 'connection lost');
+  xhr.send(job.file);
+}
+
+const drop = $('drop');
+drop.onclick = () => $('files').click();
+$('pickDir').onclick = () => $('dir').click();
+$('files').onchange = (e) => { addFiles(e.target.files, false); e.target.value = ''; };
+$('dir').onchange = (e) => { addFiles(e.target.files, true); e.target.value = ''; };
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files, false); };
+
+$('fetchBtn').onclick = async () => {
+  const url = $('url').value.trim();
+  if (!url) return;
+  const q = `folder=${encodeURIComponent($('folder').value.trim())}&url=${encodeURIComponent(url)}`;
+  const res = await fetch('/api/fetch?' + q, { method: 'POST' });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(body.error || 'Could not start download'); return; }
+  $('url').value = '';
+  pollDownloads();
+};
+
+let pollTimer = null;
+async function pollDownloads() {
+  clearTimeout(pollTimer);
+  const list = await (await fetch('/api/downloads')).json();
+  $('downloads').innerHTML = list.map(d => {
+    const pct = d.total > 0 ? Math.round(d.bytes / d.total * 100) : null;
+    const status = d.state === 'downloading'
+      ? (pct !== null ? `<progress max="100" value="${pct}"></progress>` : `<span class="size">${fmt(d.bytes)}</span>`)
+      : d.state === 'done' ? '<span class="ok">✓ on TV</span>' : `<span class="bad">✗ ${esc(d.state)}</span>`;
+    return `<div class="item"><span class="name">${esc((d.folder ? d.folder + ' / ' : '') + d.name)}</span>${status}</div>`;
+  }).join('');
+  if (list.some(d => d.state === 'downloading')) pollTimer = setTimeout(pollDownloads, 1000);
+  else loadLibrary();
+}
+
+async function loadLibrary() {
+  const lib = await (await fetch('/api/library')).json();
+  $('total').textContent = `(${lib.total} video${lib.total === 1 ? '' : 's'})`;
+  $('folders').innerHTML = lib.folders.filter(Boolean).map(f => `<option value="${esc(f.name)}">`).join('');
+  if (!lib.total) { $('library').innerHTML = '<span class="empty">No videos yet.</span>'; return; }
+  $('library').className = '';
+  $('library').innerHTML = lib.folders.map(f => `
+    <details open><summary>${esc(f.name || 'Unsorted')} <span class="size">· ${f.videos.length}</span></summary>
+      ${f.videos.map(v => `<div class="item"><span class="name">${esc(v.name)}</span>
+        <span><span class="size">${fmt(v.size)}</span>
+        <button class="danger" data-folder="${esc(f.name)}" data-name="${esc(v.name)}" title="Delete">✕</button></span></div>`).join('')}
+    </details>`).join('');
+}
+
+$('library').onclick = async (e) => {
+  const b = e.target.closest('button[data-name]');
+  if (!b || !confirm(`Delete "${b.dataset.name}" from the TV?`)) return;
+  await fetch(`/api/delete?folder=${encodeURIComponent(b.dataset.folder)}&name=${encodeURIComponent(b.dataset.name)}`, { method: 'POST' });
+  loadLibrary();
+};
+
+loadLibrary();
+pollDownloads();
+</script>
+</body>
+</html>

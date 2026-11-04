@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="qr_size">220dp</dimen>
+    <!-- Keep content inside the TV overscan-safe area. -->
+    <dimen name="safe_h">48dp</dimen>
+    <dimen name="safe_v">27dp</dimen>
+</resources>
