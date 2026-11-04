@@ -74,7 +74,8 @@ class SmbStreamServer(private val sources: NetworkSources) : NanoHTTPD(LOOPBACK,
             remote.close()
             java.io.ByteArrayInputStream(ByteArray(0))
         } else {
-            remote.stream(start, end)
+            // Read ahead in large blocks: one small SMB request per 16 KB starved playback on slow TVs.
+            PrefetchInputStream(remote.stream(start, end))
         }
         return newFixedLengthResponse(
             if (partial) Response.Status.PARTIAL_CONTENT else Response.Status.OK,

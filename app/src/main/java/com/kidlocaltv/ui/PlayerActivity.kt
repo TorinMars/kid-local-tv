@@ -21,6 +21,7 @@ import com.kidlocaltv.core.VideoLibrary
 import com.kidlocaltv.core.VideoLocation
 import com.kidlocaltv.data.AppPrefs
 import com.kidlocaltv.data.PrefsPositionStore
+import com.kidlocaltv.server.SmbDirect
 import com.kidlocaltv.server.SmbStreamServer
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
@@ -73,6 +74,11 @@ class PlayerActivity : Activity() {
     /** True when we opened the manage screen ourselves and should continue the same video after. */
     private var continueCurrentOnStart = false
     private var consecutiveErrors = 0
+
+    /** Share id of the video now playing through LibVLC's native SMB client, or null. */
+    private var playingDirectSource: String? = null
+    /** Shares the native SMB client failed to open; they stream through [SmbStreamServer] instead. */
+    private val directSmbFailed = mutableSetOf<String>()
 
     /** Between onStart and onStop. A library load that finishes outside it is dropped. */
     private var started = false
@@ -242,6 +248,7 @@ class PlayerActivity : Activity() {
 
     private fun play(video: Video) {
         val vlc = libVlc ?: return
+        playingDirectSource = null
         // A fresh player per video: reusing one means setMedia(), which first stops the old input
         // and blocks just like stop(). The old player is stopped in the background instead.
         releasePlayer()
@@ -251,14 +258,25 @@ class PlayerActivity : Activity() {
         val media = when (val location = video.location) {
             is VideoLocation.LocalFile -> Media(vlc, Uri.fromFile(location.file))
             is VideoLocation.Network -> {
-                val server = streamServer
-                if (server == null) {
-                    onVideoFailed()
-                    return
-                }
-                Media(vlc, Uri.parse(server.urlFor(location))).apply {
-                    // A little more buffer for Wi-Fi hiccups when streaming from a share.
-                    addOption(":network-caching=$NETWORK_CACHING_MS")
+                // First choice: LibVLC's own native SMB client. The loopback server (pure-Java smbj)
+                // used a whole CPU core on slow TVs and playback starved; it stays as the fallback.
+                val source = if (location.sourceId in directSmbFailed) null else prefs.networkSources.find(location.sourceId)
+                if (source != null) {
+                    playingDirectSource = location.sourceId
+                    Media(vlc, Uri.parse(SmbDirect.url(source.link, location.path))).apply {
+                        SmbDirect.loginOptions(source.link).forEach(::addOption)
+                        addOption(":network-caching=$NETWORK_CACHING_MS")
+                    }
+                } else {
+                    val server = streamServer
+                    if (server == null) {
+                        onVideoFailed()
+                        return
+                    }
+                    Media(vlc, Uri.parse(server.urlFor(location))).apply {
+                        // A little more buffer for Wi-Fi hiccups when streaming from a share.
+                        addOption(":network-caching=$NETWORK_CACHING_MS")
+                    }
                 }
             }
         }
@@ -298,6 +316,16 @@ class PlayerActivity : Activity() {
     }
 
     private fun onVideoFailed() {
+        // LibVLC's native SMB client couldn't open this share: use the loopback server for it from
+        // now on, and retry the same video that way before counting it as broken.
+        val direct = playingDirectSource
+        val current = navigator.current
+        if (direct != null && current != null) {
+            Log.w(TAG, "Native SMB playback failed; streaming this share through the app instead")
+            directSmbFailed += direct
+            play(current)
+            return
+        }
         val failed = navigator.current
         failed?.let { positions.remove(it.id) }
         consecutiveErrors++
