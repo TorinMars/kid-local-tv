@@ -67,6 +67,8 @@ class PlayerActivity : Activity() {
     private var streamServer: SmbStreamServer? = null
     private var player: MediaPlayer? = null
     private var paused = false
+    /** A focusable parental-control overlay must silence playback even when this app is Home. */
+    private var focusPausedPlayer: MediaPlayer? = null
     private var startedAt = 0L
     private val handler = Handler(Looper.getMainLooper())
     private val hideOverlay = Runnable { overlay.animate().alpha(0f).setDuration(400).start() }
@@ -184,8 +186,28 @@ class PlayerActivity : Activity() {
         finish()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) {
+            pauseForFocusLoss()
+        } else {
+            val waiting = focusPausedPlayer
+            focusPausedPlayer = null
+            if (waiting != null && player === waiting && started && !paused) waiting.play()
+        }
+    }
+
+    private fun pauseForFocusLoss() {
+        val current = player ?: return
+        if (!paused && current.isPlaying) {
+            focusPausedPlayer = current
+            current.pause()
+        }
+    }
+
     override fun onStop() {
         started = false
+        focusPausedPlayer = null
         loadGeneration++ // a load still running finishes into nothing
         if (::navigator.isInitialized) saveCurrentPosition()
         pendingPlay = null
@@ -246,6 +268,8 @@ class PlayerActivity : Activity() {
                     MediaPlayer.Event.Playing -> {
                         consecutiveErrors = 0
                         bufferingView.visibility = View.GONE
+                        // Loading can finish after a lock overlay has already taken focus.
+                        if (!hasWindowFocus()) pauseForFocusLoss()
                         // The video on screen has started: now prepare the next ones.
                         schedulePreloads(PRELOAD_AFTER_START_MS)
                     }
