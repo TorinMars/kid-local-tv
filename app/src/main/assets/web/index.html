@@ -14,7 +14,7 @@
   p.sub { color: var(--muted); margin: 0 0 24px; }
   .card { background: var(--card); border-radius: 14px; padding: 18px; margin-bottom: 18px; }
   label { display:block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
-  input[type=text], input[type=url] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #333b52; background:#11151f; color:var(--text); font-size:16px; }
+  input[type=text], input[type=url], input[type=password] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid #333b52; background:#11151f; color:var(--text); font-size:16px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
   .row > div { flex:1 1 220px; }
   button { background: var(--accent); color:#1b1300; border:0; border-radius:8px; padding:10px 16px; font-weight:600; font-size:15px; cursor:pointer; }
@@ -33,15 +33,45 @@
   details { margin-bottom: 8px; }
   summary { cursor:pointer; font-weight:600; padding:6px 0; }
   .empty { color: var(--muted); }
+  code { background:#11151f; padding:1px 6px; border-radius:5px; font-size:13px; }
+  .muted { color: var(--muted); }
+  .badge { display:inline-block; vertical-align:middle; margin-left:6px; font-size:12px; font-weight:600; padding:3px 9px; border-radius:99px; background:#1d3b2a; color:var(--ok); }
+  .badge.store { background:#3a2f17; color:var(--accent); }
+  .src { display:flex; gap:12px; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid #262c3e; }
+  .src .l { min-width:0; }
+  .src .link { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .src .meta { font-size:13px; color: var(--muted); }
+  .src .acts { display:flex; gap:6px; flex-shrink:0; }
+  .src button { padding:6px 10px; font-size:13px; }
 </style>
 </head>
 <body>
 <main>
   <h1>📺 Kid Local TV</h1>
-  <p class="sub">Send videos to the TV. Put each show in its own folder — the folder becomes a series, and files play in name order (Episode 1, Episode 2, …).</p>
+  <p class="sub">Each folder is a series, and its files play in name order (Episode 1, Episode 2, …).</p>
 
   <section class="card">
-    <h2>Upload from this device</h2>
+    <h2>Network folders <span class="badge">streams · uses no TV storage</span></h2>
+    <p class="hint" style="margin-top:0">Add a shared folder from a NAS, Windows PC or Mac — e.g. <code>smb://nas/Videos/Ocean Friends</code> or <code>\\nas\Videos\Ocean Friends</code>. Videos play straight from the share; nothing is copied to the TV. Sub-folders become series, and new files show up automatically.</p>
+    <div class="row">
+      <div><label for="smbUrl">Shared folder (SMB)</label><input id="smbUrl" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="smb://192.168.1.20/Videos"></div>
+      <div style="flex:0 1 220px"><label for="smbFolder">Series name (optional)</label><input id="smbFolder" type="text" placeholder="use the folder's name"></div>
+    </div>
+    <details id="login" style="margin-top:12px">
+      <summary style="font-weight:500;color:var(--muted)">Share needs a login?</summary>
+      <div class="row" style="margin-top:8px">
+        <div><label for="smbUser">Username</label><input id="smbUser" type="text" autocapitalize="off" autocomplete="username"></div>
+        <div><label for="smbPass">Password</label><input id="smbPass" type="password" autocomplete="current-password"></div>
+        <div style="flex-basis:140px"><label for="smbDomain">Domain (optional)</label><input id="smbDomain" type="text" autocapitalize="off" placeholder="WORKGROUP"></div>
+      </div>
+      <p class="hint">Leave empty for guest / public shares. The TV keeps the login (in its private app storage) so it can play the videos later.</p>
+    </details>
+    <div class="row" style="margin-top:12px"><button id="addSource" type="button">Add network folder</button></div>
+    <div id="sources" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card">
+    <h2>Copy videos to the TV <span class="badge store">uses TV storage</span></h2>
     <div class="row">
       <div>
         <label for="folder">Folder / series name</label>
@@ -49,28 +79,23 @@
         <datalist id="folders"></datalist>
       </div>
     </div>
-    <div id="drop">Drop video files here, or <u>click to choose</u> (you can pick a whole folder too)</div>
-    <input id="files" type="file" accept="video/*,.mkv,.avi,.ts,.m2ts,.flv" multiple hidden>
+    <div id="drop">Drop video files here, or <u>click to choose</u></div>
+    <input id="files" type="file" multiple hidden>
     <input id="dir" type="file" webkitdirectory multiple hidden>
     <div class="row" style="margin-top:10px">
       <button class="secondary" id="pickDir" type="button">Choose a folder…</button>
     </div>
     <p class="hint">Picking a folder uses each file's sub-folder as its series name.</p>
     <div id="queue"></div>
-  </section>
-
-  <section class="card">
-    <h2>Import from a link on your network</h2>
-    <p class="hint" style="margin-top:0">Got a NAS or media server? Paste a direct link to a video file and the TV will download it.</p>
-    <div class="row">
-      <div><label for="url">Video URL</label><input id="url" type="url" placeholder="http://192.168.1.20/videos/episode1.mp4"></div>
-      <button id="fetchBtn" type="button">Download to TV</button>
+    <div class="row" style="margin-top:16px">
+      <div><label for="url">…or download a video link to the TV</label><input id="url" type="url" autocomplete="off" placeholder="http://192.168.1.20/videos/episode1.mp4"></div>
+      <button class="secondary" id="fetchBtn" type="button">Download</button>
     </div>
     <div id="downloads"></div>
   </section>
 
   <section class="card">
-    <h2>Library on the TV <span id="total" class="size"></span></h2>
+    <h2>Stored on the TV <span id="total" class="size"></span></h2>
     <div id="library" class="empty">Loading…</div>
   </section>
 </main>
@@ -78,7 +103,7 @@
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n < 1e6 ? (n/1e3).toFixed(0)+' KB' : n < 1e9 ? (n/1e6).toFixed(1)+' MB' : (n/1e9).toFixed(2)+' GB';
 const esc = (s) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const VIDEO = /\.(mp4|m4v|mkv|webm|mov|avi|ts|m2ts|3gp|flv|mpg|mpeg)$/i;
+const VIDEO = /\.(mp4|m4v|mkv|mk3d|webm|mov|qt|avi|divx|xvid|wmv|asf|flv|f4v|ts|m2ts|mts|m2t|tp|trp|vob|mpg|mpeg|mpe|m1v|m2v|mp2v|mpv|3gp|3g2|ogv|ogm|ogx|rm|rmvb|dv|mxf|nut|nsv|amv|y4m|wtv|dvr-ms|evo|ivf)$/i;
 
 let queue = [], uploading = false;
 
@@ -131,37 +156,93 @@ drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files, false); };
 
+$('url').onkeydown = (e) => { if (e.key === 'Enter') $('fetchBtn').click(); };
 $('fetchBtn').onclick = async () => {
   const url = $('url').value.trim();
   if (!url) return;
-  const q = `folder=${encodeURIComponent($('folder').value.trim())}&url=${encodeURIComponent(url)}`;
-  const res = await fetch('/api/fetch?' + q, { method: 'POST' });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) { alert(body.error || 'Could not start download'); return; }
+  if (/^(smb:|\\\\|\/\/)/i.test(url)) { $('smbUrl').value = url; $('url').value = ''; $('smbUrl').focus(); return; }
+  const body = new URLSearchParams({ url, folder: $('folder').value.trim() });
+  const btn = $('fetchBtn'); btn.disabled = true;
+  const res = await fetch('/api/fetch', { method: 'POST', body }).finally(() => { btn.disabled = false; });
+  const reply = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(reply.error || 'Could not start the download'); return; }
   $('url').value = '';
   pollDownloads();
 };
 
-let pollTimer = null;
+$('smbUrl').onkeydown = (e) => { if (e.key === 'Enter') $('addSource').click(); };
+$('addSource').onclick = async () => {
+  const url = $('smbUrl').value.trim();
+  if (!url) { $('smbUrl').focus(); return; }
+  const body = new URLSearchParams({
+    url, folder: $('smbFolder').value.trim(),
+    username: $('smbUser').value.trim(), password: $('smbPass').value, domain: $('smbDomain').value.trim(),
+  });
+  const btn = $('addSource'); btn.disabled = true;
+  const res = await fetch('/api/sources', { method: 'POST', body }).finally(() => { btn.disabled = false; });
+  const reply = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(reply.error || 'Could not add the folder'); return; }
+  $('smbUrl').value = ''; $('smbFolder').value = ''; $('smbPass').value = '';
+  loadSources();
+};
+
+let sourcesTimer = null;
+async function loadSources() {
+  clearTimeout(sourcesTimer);
+  const list = await (await fetch('/api/sources')).json();
+  $('sources').innerHTML = list.length ? list.map(s => {
+    const failed = s.state.startsWith('failed');
+    const scanning = s.state.startsWith('scanning') || s.state === 'not scanned yet';
+    const when = s.scannedAt ? new Date(s.scannedAt).toLocaleString() : '';
+    const status = scanning ? '<span class="muted">scanning…</span>'
+      : failed ? `<span class="bad">✗ ${esc(s.state.replace(/^failed: /, ''))}</span>`
+      : `<span class="ok">✓ ${s.videos} video${s.videos === 1 ? '' : 's'} in ${s.folders} folder${s.folders === 1 ? '' : 's'}</span>`;
+    return `<div class="src"><div class="l">
+        <div class="link">${esc(s.link)}</div>
+        <div class="meta">${status}${s.user ? ' · as ' + esc(s.user) : ''}${s.folder ? ' · series “' + esc(s.folder) + '”' : ''}${when && !scanning ? ' · checked ' + esc(when) : ''}${failed && s.videos ? ' · still playing ' + s.videos + ' known videos' : ''}</div>
+      </div><div class="acts">
+        <button class="secondary" data-rescan="${esc(s.id)}">Rescan</button>
+        <button class="secondary" data-remove="${esc(s.id)}" data-link="${esc(s.link)}">Remove</button>
+      </div></div>`;
+  }).join('') : '<p class="hint">No network folders yet.</p>';
+  if (list.some(s => s.state.startsWith('scanning') || s.state === 'not scanned yet')) sourcesTimer = setTimeout(loadSources, 1000);
+}
+
+$('sources').onclick = async (e) => {
+  const r = e.target.closest('button[data-rescan]');
+  if (r) { await fetch('/api/sources/rescan?id=' + encodeURIComponent(r.dataset.rescan), { method: 'POST' }); setTimeout(loadSources, 200); return; }
+  const d = e.target.closest('button[data-remove]');
+  if (d && confirm(`Stop using ${d.dataset.link}?\nNothing on the share is deleted.`)) {
+    await fetch('/api/sources/remove?id=' + encodeURIComponent(d.dataset.remove), { method: 'POST' });
+    loadSources();
+  }
+};
+
+let pollTimer = null, lastDoneCount = 0;
 async function pollDownloads() {
   clearTimeout(pollTimer);
   const list = await (await fetch('/api/downloads')).json();
   $('downloads').innerHTML = list.map(d => {
     const pct = d.total > 0 ? Math.round(d.bytes / d.total * 100) : null;
     const status = d.state === 'downloading'
-      ? (pct !== null ? `<progress max="100" value="${pct}"></progress>` : `<span class="size">${fmt(d.bytes)}</span>`)
-      : d.state === 'done' ? '<span class="ok">✓ on TV</span>' : `<span class="bad">✗ ${esc(d.state)}</span>`;
+      ? (pct !== null ? `<span><progress max="100" value="${pct}"></progress> <span class="size">${fmt(d.total)}</span></span>` : `<span class="size">${fmt(d.bytes)}</span>`)
+      : d.state === 'done' ? '<span class="ok">✓ on TV</span>'
+      : d.state === 'already on TV' ? '<span class="muted">already on TV</span>'
+      : d.state.startsWith('failed') ? `<span class="bad">✗ ${esc(d.state.replace(/^failed: /, ''))}</span>`
+      : `<span class="muted">${esc(d.state)}</span>`;
     return `<div class="item"><span class="name">${esc((d.folder ? d.folder + ' / ' : '') + d.name)}</span>${status}</div>`;
   }).join('');
-  if (list.some(d => d.state === 'downloading')) pollTimer = setTimeout(pollDownloads, 1000);
-  else loadLibrary();
+  const busy = list.some(d => d.state !== 'done' && d.state !== 'already on TV' && !d.state.startsWith('failed'));
+  const doneCount = list.filter(d => d.state === 'done').length;
+  if (doneCount !== lastDoneCount) { lastDoneCount = doneCount; loadLibrary(); }
+  if (busy) pollTimer = setTimeout(pollDownloads, 1000);
 }
 
 async function loadLibrary() {
   const lib = await (await fetch('/api/library')).json();
-  $('total').textContent = `(${lib.total} video${lib.total === 1 ? '' : 's'})`;
+  $('total').textContent = `(${lib.total} video${lib.total === 1 ? '' : 's'}${lib.network ? ` · plus ${lib.network} streamed from network folders` : ''})`;
   $('folders').innerHTML = lib.folders.filter(Boolean).map(f => `<option value="${esc(f.name)}">`).join('');
-  if (!lib.total) { $('library').innerHTML = '<span class="empty">No videos yet.</span>'; return; }
+  if (!lib.total) { $('library').innerHTML = '<span class="empty">Nothing stored on the TV.</span>'; return; }
   $('library').className = '';
   $('library').innerHTML = lib.folders.map(f => `
     <details open><summary>${esc(f.name || 'Unsorted')} <span class="size">· ${f.videos.length}</span></summary>
@@ -178,6 +259,7 @@ $('library').onclick = async (e) => {
   loadLibrary();
 };
 
+loadSources();
 loadLibrary();
 pollDownloads();
 </script>

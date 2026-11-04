@@ -24,8 +24,14 @@ class VideoLibrary(videos: List<Video>) {
     fun episodesOf(folder: String): List<Video> = byFolder[folder].orEmpty()
 
     companion object {
+        /** Containers LibVLC can open. Codecs inside are decoded in hardware when possible, software otherwise. */
         val VIDEO_EXTENSIONS = setOf(
-            "mp4", "m4v", "mkv", "webm", "mov", "avi", "ts", "m2ts", "3gp", "flv", "mpg", "mpeg",
+            "mp4", "m4v", "mkv", "mk3d", "webm", "mov", "qt",
+            "avi", "divx", "xvid", "wmv", "asf", "flv", "f4v",
+            "ts", "m2ts", "mts", "m2t", "tp", "trp", "vob", "evo",
+            "mpg", "mpeg", "mpe", "m1v", "m2v", "mp2v", "mpv",
+            "3gp", "3g2", "ogv", "ogm", "ogx", "rm", "rmvb",
+            "dv", "mxf", "nut", "nsv", "amv", "y4m", "wtv", "dvr-ms", "ivf",
         )
 
         fun isVideoFile(name: String): Boolean =
@@ -41,7 +47,7 @@ class VideoLibrary(videos: List<Video>) {
                     .forEach { file ->
                         val rel = file.relativeTo(root).invariantSeparatorsPath
                         val folder = rel.substringBeforeLast('/', "")
-                        result += Video(id = rel, folder = folder, name = file.name, file = file)
+                        result += Video(id = rel, folder = folder, name = file.name, location = VideoLocation.LocalFile(file))
                     }
             }
             return VideoLibrary(result)

@@ -83,6 +83,7 @@ class SetupActivity : Activity() {
             val candidate = ImportServer(
                 port = port,
                 root = root,
+                sources = prefs.networkSources,
                 page = { assets.open("web/index.html") },
                 onLibraryChanged = { handler.post { refreshCount() } },
             )

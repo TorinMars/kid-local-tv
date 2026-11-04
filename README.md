@@ -1,10 +1,12 @@
 # Kid Local TV
 
-A simple, kid-friendly video player for **Android TV**. You load it with your own videos over the home network. Once it's set up, it opens straight into full-screen playback of a random video. The remote's arrow keys are the only controls there are.
+A simple, kid-friendly video player for **Android TV**. It plays videos from shared folders on your home network (NAS, Windows PC or Mac) **without copying them to the TV**, so it works fine on TVs with little storage. You can also upload videos to the TV itself.
+
+Once it's set up, the app opens straight into full-screen playback of a random video. The remote's arrow keys are the only controls there are.
 
 <p align="center"><img src="docs/images/tv-shuffle.png" width="820" alt="Kid Local TV playing a video in shuffle mode"></p>
 
-> **About the images:** The TV-screen pictures in this README are illustrations. They're drawn to match the app's real layouts, colours and text (`activity_setup.xml`, `activity_player.xml`, `strings.xml`), and the "videos" in them are placeholder art. The [web import page](#2-send-videos-from-a-phone-or-computer) screenshot is a real capture of the page the app serves.
+> **About the images:** The TV-screen pictures in this README are illustrations. They're drawn to match the app's real layouts, colours and text (`activity_setup.xml`, `activity_player.xml`, `strings.xml`), and the "videos" in them are placeholder art. The [web page](#2-add-videos-from-a-phone-or-computer) screenshot is a real capture of the page the app serves, connected to two test SMB shares.
 
 ---
 
@@ -12,14 +14,15 @@ A simple, kid-friendly video player for **Android TV**. You load it with your ow
 
 | | |
 |---|---|
-| 🛠 **One-time setup** | On first launch the TV shows an address and QR code. Open it on any phone or computer on the same Wi-Fi to send videos. |
-| ▶️ **Instant playback** | Every launch after that goes straight to full screen and starts a random video. |
+| 🛠 **One-time setup** | On first launch the TV shows an address and QR code. Open it on any phone or computer on the same Wi-Fi. |
+| 📡 **Network folders (SMB)** | Add `smb://nas/Videos` (or `\\nas\Videos`) and the TV **streams** from it. Nothing is copied, so the TV only stores a tiny file list. |
+| 🎞 **Plays almost anything** | [LibVLC](https://www.videolan.org/vlc/libvlc.html) decodes MP4, MKV, AVI/DivX/Xvid, WMV, MPEG-2, HEVC, VP9, AV1, AC3/DTS audio and more, using hardware decoding when the TV supports the codec. |
+| ▶️ **Instant playback** | Every launch after setup goes straight to full screen and starts a random video. |
 | 🔀 **Shuffle mode** | ▲ or ▼ plays another random video from the *whole* library, whatever folder or file order. |
 | 📺 **Series mode** | ▶ locks onto the current video's folder. ▲ / ▼ then step through its episodes in order. |
 | 🔖 **Resume** | Each time ▲/▼ switches videos, the spot in the video you left is saved. That video resumes there next time. |
-| 🌐 **Network import** | Upload files or whole folders from a browser, or have the TV download a video from a link on your NAS. |
 
-<p align="center"><img src="docs/images/diagram-flow.png" width="900" alt="Setup flow: first launch shows an address, send videos from a phone, later launches play immediately"></p>
+<p align="center"><img src="docs/images/diagram-flow.png" width="900" alt="Setup flow: first launch shows an address, add videos from a phone, later launches play immediately"></p>
 
 ---
 
@@ -27,27 +30,46 @@ A simple, kid-friendly video player for **Android TV**. You load it with your ow
 
 ### 1. First launch: set up a video source
 
-When the library is empty, the app opens the setup screen. The TV starts a small web server on port `8080` and shows its address and a QR code. Uploaded videos are stored on the TV, in the app's own storage, so no storage permission is needed.
+When the library is empty, the app opens the setup screen. The TV starts a small web server on port `8080` and shows its address and a QR code.
 
-<p align="center"><img src="docs/images/tv-setup.png" width="820" alt="Setup screen with the import address and QR code"></p>
+<p align="center"><img src="docs/images/tv-setup.png" width="820" alt="Setup screen with the address and QR code"></p>
 
-The count updates live as videos arrive. Once at least one video is on the TV, **Start watching** becomes available. From then on the app skips this screen.
+The count updates live as videos are found. Once there's at least one video, **Start watching** becomes available. From then on the app skips this screen.
 
-### 2. Send videos from a phone or computer
+### 2. Add videos from a phone or computer
 
-Open the address shown on the TV (or scan the QR code). The page lets you:
+Open the address shown on the TV (or scan the QR code).
 
-- **Upload files.** Drag and drop, or pick them. Type a *folder / series name* first, for example `Ocean Friends`.
-- **Upload a whole folder.** Each file's sub-folder becomes its series name.
-- **Import from a link.** Paste a direct `http://…/video.mp4` link from a NAS or media server and the TV downloads it.
-- **See and delete** what's already on the TV.
+<p align="center"><img src="docs/images/web-import.png" width="560" alt="The web page served by the TV, with two network folders added"></p>
+<p align="center"><sub>Real screenshot. The two shares listed are local test servers, which is why they show 127.0.0.1.</sub></p>
 
-<p align="center"><img src="docs/images/web-import.png" width="560" alt="The web import page served by the TV"></p>
-<p align="center"><sub>Real screenshot of the import page. The three upload rows at the top were staged to show what an upload in progress looks like.</sub></p>
+#### Network folders (recommended: uses no TV storage)
 
-**Folders are series.** Files inside a folder play in *natural* name order, so `Episode 2` comes before `Episode 10`. Videos uploaded without a folder go into *Unsorted*.
+Paste a shared folder, and add a login if the share needs one. All of these forms work:
 
-Supported files: `mp4 m4v mkv webm mov avi ts m2ts 3gp flv mpg mpeg`. Playback uses Media3 ExoPlayer, so what actually plays depends on the TV's hardware codecs. H.264/AAC MP4 is the safest choice.
+| You paste | Means |
+|---|---|
+| `smb://nas/Videos` | Whole share. Its top-level folders become series. |
+| `smb://nas/Videos/Ocean Friends` | One folder. It becomes the series "Ocean Friends", and its sub-folders become their own series. |
+| `\\nas\Videos\Ocean Friends` | Same, Windows style. `//nas/Videos` (macOS / Linux style) works too. |
+| `smb://mum:secret@192.168.1.20:445/Videos` | Login and port inside the link. You can use the separate login fields instead. |
+
+<p align="center"><img src="docs/images/diagram-network.png" width="900" alt="Network folders stream: the NAS share is read on demand through a loopback stream server into LibVLC"></p>
+
+- **Nothing is copied.** The TV saves the link, the login and a small list of file names (a few KB). Each video is read from the share while it plays, and seeking and resume work as usual.
+- **Fast start.** The app starts from the cached file list, so launch is instant. It then re-checks each share in the background (at most every 10 minutes) to pick up new episodes.
+- **Share switched off?** Its videos are skipped, and anything else in the library keeps playing. If a whole series is offline, playback returns to shuffle mode.
+- **Rescan / Remove** buttons are on the web page. Removing a network folder never touches the share.
+- Works with SMB 2 and 3 shares: Windows, macOS file sharing, Samba, Synology, QNAP, TrueNAS and others. Guest shares need no login. NAS housekeeping folders such as `@eaDir` and `#recycle`, and hidden files, are ignored.
+- The login is stored in the app's private storage on the TV, so the app can play the videos later. Re-adding a share with a wrong password keeps the previous, working login.
+
+#### Copying to the TV (optional: uses TV storage)
+
+- **Upload files or whole folders** from the browser. Type a *folder / series name* first, or pick a folder so each file's sub-folder becomes its series.
+- **Download a direct `http://…/video.mp4` link** to the TV.
+- See and delete what's stored on the TV in the last section of the page.
+
+**Folders are series.** Files inside a folder play in *natural* name order, so `Episode 2` comes before `Episode 10`.
 
 ### 3. Every launch after: straight to playback
 
@@ -57,7 +79,7 @@ The app opens full screen and starts a random video in **shuffle mode**. A small
 
 #### Shuffle mode
 
-- ▲ and ▼ both pick **another random video from the entire library**.
+- ▲ and ▼ both pick **another random video from the entire library**, local and network videos alike.
 - A "shuffle bag" makes sure every video plays once before any repeats, and the video that's playing never comes up again straight away.
 - When a video ends, another random one starts.
 
@@ -75,10 +97,23 @@ Press **▶** while something is playing to switch to series mode for that video
 
 <p align="center"><img src="docs/images/diagram-resume.png" width="900" alt="Position is saved when switching videos and restored later"></p>
 
-- Every ▲ / ▼ switch saves the current position of the video **being left**, keyed by its path in the library.
-- When that video plays again, in either mode, it starts from the saved spot.
+- Every ▲ / ▼ switch saves the current position of the video **being left**.
+- When that video plays again, in either mode, it starts from the saved spot. This works for network videos too.
 - Positions within the first 5 s or the last 15 s aren't kept, so a finished video starts fresh.
 - Leaving the app (Home or Back) also saves the current spot.
+
+---
+
+## Supported formats
+
+Playback uses **LibVLC 3.7** (from VideoLAN, the VLC engine). For each video it tries the TV's hardware decoder (MediaCodec) first and falls back to software decoding (libavcodec) when the hardware can't handle the codec.
+
+| Containers | `mp4 m4v mkv webm mov avi divx wmv asf flv f4v ts m2ts mts vob mpg mpeg m2v 3gp 3g2 ogv ogm rm rmvb dv mxf nut wtv dvr-ms ivf …` |
+|---|---|
+| Video codecs | H.264, H.265/HEVC, VP8, VP9, AV1, MPEG-1/2/4, DivX/Xvid, WMV 7/8/9, VC-1, Theora, RealVideo, ProRes, DV, MJPEG, and more |
+| Audio codecs | AAC, MP3, AC3/E-AC3, DTS, FLAC, Opus, Vorbis, WMA, PCM, and more |
+
+Software decoding of high-resolution HEVC or AV1 can be too slow on low-end TV boxes. If a file stutters, H.264 MP4 at 1080p is the safest choice. A file that can't be played is skipped with a short notice.
 
 ---
 
@@ -99,7 +134,7 @@ Press **▶** while something is playing to switch to series mode for that video
 
 <p align="center"><img src="docs/images/tv-paused.png" width="640" alt="Paused playback"></p>
 
-**Manage videos** (hold OK) reopens the import screen so you can add or remove videos. Press *Back to watching* to carry on with the same video.
+**Manage videos** (hold OK) reopens the setup screen and its web page, so you can add network folders or upload videos. Press *Back to watching* to carry on with the same video.
 
 ---
 
@@ -115,7 +150,16 @@ Press **▶** while something is playing to switch to series mode for that video
 ./gradlew assembleDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Because LibVLC includes native code, the build makes one APK per CPU type plus a universal one, in `app/build/outputs/apk/debug/`:
+
+| APK | Use it for | Size (approx.) |
+|---|---|---|
+| `app-armeabi-v7a-debug.apk` | **Most Android TVs and sticks.** Many run 32-bit Android even on 64-bit chips. | ~30 MB |
+| `app-arm64-v8a-debug.apk` | 64-bit TVs such as NVIDIA Shield, Chromecast with Google TV, newer boxes | ~30 MB |
+| `app-universal-debug.apk` | Any device, if you're not sure | ~100 MB |
+| `app-x86*-debug.apk` | Emulators / x86 boxes | ~30 MB |
+
+If the device refuses an APK with "App not installed", try the other ARM build, or the universal one.
 
 ### Sideload it
 
@@ -127,7 +171,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
    ```
 
    ```bash
-   adb install -r app-debug.apk
+   adb install -r app-armeabi-v7a-debug.apk
    ```
 
 3. **Kid Local TV** appears in the TV's apps row.
@@ -144,18 +188,23 @@ Alternatively, copy the APK to a USB stick or cloud drive and open it with a fil
 app/src/main/java/com/kidlocaltv/
 ├── core/                    # Pure Kotlin, unit tested on the JVM
 │   ├── PlaybackNavigator.kt # shuffle / series logic, shuffle bag, wrap-around
-│   ├── VideoLibrary.kt      # folder scan, grouping, natural sort
+│   ├── VideoLibrary.kt      # folder scan, grouping, natural sort, supported extensions
+│   ├── Video.kt             # a video: local file or network (SMB) location
 │   ├── NaturalOrder.kt
 │   └── ResumePolicy.kt      # when to keep / clear saved positions
-├── server/
-│   ├── ImportServer.kt      # NanoHTTPD: upload, link import, library, delete
+├── server/                  # Pure JVM (no Android APIs), tested against real SMB servers
+│   ├── ImportServer.kt      # web page API: uploads, network folders, downloads, delete
+│   ├── NetworkSources.kt    # saved SMB shares + cached file lists, background rescans
+│   ├── SmbStreamServer.kt   # loopback HTTP server: streams SMB files with Range/seek support
+│   ├── SmbSource.kt         # smbj wrapper: login, recursive listing, random-access reads
+│   ├── SmbLink.kt           # parses smb://, \\server\share and //server/share links
 │   └── NetworkInfo.kt       # TV's LAN address
 ├── data/AppPrefs.kt         # setup flag, library location, saved positions
 └── ui/
-    ├── PlayerActivity.kt    # launcher, full-screen player, remote handling
+    ├── PlayerActivity.kt    # launcher, LibVLC full-screen player, remote handling
     ├── SetupActivity.kt     # first run + "Manage videos"
     └── QrCode.kt
-app/src/main/assets/web/index.html   # the import web page
+app/src/main/assets/web/index.html   # the web page
 ```
 
 Run the unit tests:
@@ -166,6 +215,20 @@ Run the unit tests:
 
 ### Notes
 
-- The import server only runs while the setup / manage screen is open. It has **no password**, so anyone on the same network can reach it during that time.
-- Upload and link-import file names are cleaned up, and every write stays inside the library folder.
+- The web page only runs while the setup / manage screen is open. It has **no password**, so anyone on the same network can reach it during that time.
+- The stream server listens on `127.0.0.1` only, so other devices on the network can't reach it.
+- SMB logins are stored in the app's private storage, which other apps can't read. They're stored in plain text, though, so use a read-only account for the share if you can.
+- Upload and download file names are cleaned up, and every write stays inside the TV's library folder.
 - `minSdk` 21 (Android 5.0), `targetSdk` 35. The app declares the Leanback launcher but doesn't require it, so it also installs on regular Android devices.
+
+### Open-source libraries
+
+| Library | Used for | License |
+|---|---|---|
+| [LibVLC for Android](https://code.videolan.org/videolan/vlc-android) | Video playback / decoding | LGPL-2.1+ |
+| [smbj](https://github.com/hierynomus/smbj) | SMB 2/3 client | Apache-2.0 |
+| [Bouncy Castle](https://www.bouncycastle.org/) (via smbj) | NTLM crypto for SMB logins | MIT |
+| [NanoHTTPD](https://github.com/NanoHttpd/nanohttpd) | Web page and stream servers | BSD-3-Clause |
+| [ZXing](https://github.com/zxing/zxing) | QR code on the setup screen | Apache-2.0 |
+
+LibVLC is LGPL. It's used unmodified, as the shared libraries published by VideoLAN, so it can be swapped for another build.

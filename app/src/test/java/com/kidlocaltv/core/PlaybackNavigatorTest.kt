@@ -14,7 +14,7 @@ class PlaybackNavigatorTest {
 
     private fun video(folder: String, name: String): Video {
         val id = if (folder.isEmpty()) name else "$folder/$name"
-        return Video(id, folder, name, File(id))
+        return Video(id, folder, name, VideoLocation.LocalFile(File(id)))
     }
 
     private val library = VideoLibrary(

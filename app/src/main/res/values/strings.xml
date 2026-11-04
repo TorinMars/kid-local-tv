@@ -7,7 +7,7 @@
     <string name="manage_title">Manage videos</string>
     <string name="setup_step1">1. Connect a phone or computer to the same Wi-Fi as this TV.</string>
     <string name="setup_step2">2. Open this address in its web browser, or scan the QR code:</string>
-    <string name="setup_step3">3. Upload videos. Put each show in its own folder – a folder is a series.</string>
+    <string name="setup_step3">3. Add a shared folder (SMB) to stream from, or upload videos. Each folder is a series.</string>
     <string name="server_ready">Waiting for videos… keep this screen open while uploading.</string>
     <string name="no_network">This TV isn\'t on a network. Connect it to Wi-Fi or Ethernet.</string>
     <string name="server_failed">Couldn\'t start the import server. Try restarting the app.</string>
@@ -31,4 +31,5 @@
     <string name="only_episode">This is the only video in this folder</string>
     <string name="cannot_play">Couldn\'t play \"%1$s\" – skipping</string>
     <string name="nothing_playable">None of the videos could be played</string>
+    <string name="stream_server_failed">Network folders are unavailable right now</string>
 </resources>
