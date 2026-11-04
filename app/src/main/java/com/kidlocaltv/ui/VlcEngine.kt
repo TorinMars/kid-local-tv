@@ -34,11 +34,18 @@ object VlcEngine {
      * Stops and frees a player in the background. stop() waits for VLC's input thread to end, and
      * when that thread is waiting on a network read (an SMB stream) it can take seconds. On the main
      * thread that froze the app into an ANR. The caller must detach the player's views first.
+     * [onReleased] runs on the main thread once the player, and so its hardware decoder, is gone.
      */
-    fun releaseInBackground(player: MediaPlayer) {
+    fun releaseInBackground(player: MediaPlayer, onReleased: Runnable? = null) {
         releaser.execute {
-            player.stop()
-            player.release()
+            try {
+                player.stop()
+                player.release()
+            } finally {
+                if (onReleased != null) mainHandler.post(onReleased)
+            }
         }
     }
+
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 }

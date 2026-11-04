@@ -131,4 +131,96 @@ class PlaybackNavigatorTest {
             root.deleteRecursively()
         }
     }
+
+    // ---- preview (used to preload what Up/Down will play) ----
+
+    @Test
+    fun shufflePreviewIsExactlyWhatUpAndDownPlayNext() {
+        val nav = PlaybackNavigator(library, Random(7))
+        nav.start()
+        repeat(20) { round ->
+            val preview = nav.preview(ahead = 2, behind = 1)
+            assertEquals(3, preview.size)
+            // Up and Down both take the next random pick in shuffle mode.
+            val next = if (round % 2 == 0) nav.down()!! else nav.up()!!
+            assertEquals(preview.first().id, next.id)
+        }
+    }
+
+    @Test
+    fun shufflePreviewDoesNotMoveAndIsStable() {
+        val nav = PlaybackNavigator(library, Random(3))
+        val first = nav.start()!!
+        val a = nav.preview(2, 1).map { it.id }
+        val b = nav.preview(2, 1).map { it.id }
+        assertEquals(a, b)
+        assertEquals(first.id, nav.current!!.id)
+        assertFalse(a.contains(first.id))
+        assertEquals(a.size, a.toSet().size)
+    }
+
+    @Test
+    fun shufflePreviewNeverPlaysTheSameVideoTwiceInARow() {
+        val nav = PlaybackNavigator(library, Random(11))
+        var prev = nav.start()!!
+        repeat(80) {
+            nav.preview(2, 1)
+            val next = nav.down()!!
+            assertNotEquals(prev.id, next.id)
+            prev = next
+        }
+    }
+
+    @Test
+    fun seriesPreviewIsNextThenPreviousThenFurther() {
+        val nav = PlaybackNavigator(library, Random(1))
+        nav.restore("Bluey/Episode 2.mp4", PlaybackMode.SHUFFLE)
+        nav.enterSeriesMode()
+        val preview = nav.preview(ahead = 2, behind = 1).map { it.name }
+        // Episode 2: next is 10, previous is 1; two ahead wraps to 1, which is already listed.
+        assertEquals(listOf("Episode 10.mp4", "Episode 1.mp4"), preview)
+        assertEquals("Episode 10.mp4", nav.down()!!.name)
+    }
+
+    @Test
+    fun previewOfATinyLibraryIsEmptyOrShort() {
+        val one = VideoLibrary(listOf(video("", "only.mp4")))
+        val nav = PlaybackNavigator(one, Random(1))
+        nav.start()
+        assertTrue(nav.preview(2, 1).isEmpty())
+
+        val two = VideoLibrary(listOf(video("", "a.mp4"), video("", "b.mp4")))
+        val nav2 = PlaybackNavigator(two, Random(1))
+        val start = nav2.start()!!
+        val preview = nav2.preview(2, 1)
+        assertEquals(1, preview.size)
+        assertNotEquals(start.id, preview.first().id)
+        assertEquals(preview.first().id, nav2.down()!!.id)
+    }
+
+    @Test
+    fun newLibraryDropsStalePreview() {
+        val nav = PlaybackNavigator(library, Random(5))
+        nav.start()
+        nav.preview(2, 1)
+        val smaller = VideoLibrary(listOf(video("", "x.mp4"), video("", "y.mp4"), video("", "z.mp4")))
+        nav.updateLibrary(smaller)
+        val ids = smaller.videos.map { it.id }.toSet()
+        assertTrue(nav.preview(2, 1).all { it.id in ids })
+        assertTrue(nav.down()!!.id in ids)
+    }
+
+    @Test
+    fun fiveVideoShufflePreviewHasNoRepeatsAndMatchesPlayback() {
+        val nav = PlaybackNavigator(library, Random(19))
+        nav.start()
+        repeat(40) {
+            val preview = nav.preview(ahead = 4, behind = 1)
+            // Six videos, one playing: the five others, each once.
+            assertEquals(5, preview.size)
+            assertEquals(5, preview.map { it.id }.toSet().size)
+            assertFalse(preview.any { it.id == nav.current!!.id })
+            assertEquals(preview.first().id, nav.down()!!.id)
+        }
+    }
 }

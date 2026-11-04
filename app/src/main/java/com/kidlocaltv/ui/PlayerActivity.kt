@@ -26,6 +26,7 @@ import com.kidlocaltv.server.SmbStreamServer
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IVLCVout
 import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
@@ -79,6 +80,20 @@ class PlayerActivity : Activity() {
     private var playingDirectSource: String? = null
     /** Shares the native SMB client failed to open; they stream through [SmbStreamServer] instead. */
     private val directSmbFailed = mutableSetOf<String>()
+
+    /** The video the current player shows. Differs from navigator.current while a switch is pending. */
+    private var playingVideo: Video? = null
+
+    /** Keeps the next few videos ready so Up/Down switch at once. */
+    private val preloader = Preloader(
+        handler = handler,
+        newPlayer = { libVlc?.takeIf { hasMemoryForPreload() }?.let { MediaPlayer(it) } },
+        buildMedia = ::buildMedia,
+    )
+    private val preloadRefresh = Runnable { refreshPreloads() }
+
+    /** A switch to a video that isn't preloaded waits until the Up/Down presses stop. */
+    private var pendingPlay: Runnable? = null
 
     /** Between onStart and onStop. A library load that finishes outside it is dropped. */
     private var started = false
@@ -173,6 +188,8 @@ class PlayerActivity : Activity() {
         started = false
         loadGeneration++ // a load still running finishes into nothing
         if (::navigator.isInitialized) saveCurrentPosition()
+        pendingPlay = null
+        preloader.clear()
         releasePlayer()
         streamServer?.stopServer()
         streamServer = null
@@ -201,7 +218,12 @@ class PlayerActivity : Activity() {
         Thread {
             if (sources.scanStale(RESCAN_AFTER_MS)) {
                 val fresh = prefs.scanLibrary()
-                handler.post { if (player != null && !fresh.isEmpty) navigator.updateLibrary(fresh) }
+                handler.post {
+                    if (player != null && !fresh.isEmpty) {
+                        navigator.updateLibrary(fresh)
+                        schedulePreloads(MODE_CHANGE_PRELOAD_MS) // the upcoming picks were redrawn
+                    }
+                }
             }
         }.apply { isDaemon = true; name = "network-rescan" }.start()
     }
@@ -210,6 +232,12 @@ class PlayerActivity : Activity() {
         val vlc = libVlc ?: return
         val mp = MediaPlayer(vlc)
         mp.attachViews(videoLayout, null, false, false)
+        listenAsCurrent(mp)
+        player = mp
+    }
+
+    /** The event handling of the player on screen. */
+    private fun listenAsCurrent(mp: MediaPlayer) {
         mp.setEventListener(object : MediaPlayer.EventListener {
             override fun onEvent(event: MediaPlayer.Event) {
                 // Only react to events from the player that's currently attached.
@@ -218,6 +246,8 @@ class PlayerActivity : Activity() {
                     MediaPlayer.Event.Playing -> {
                         consecutiveErrors = 0
                         bufferingView.visibility = View.GONE
+                        // The video on screen has started: now prepare the next ones.
+                        schedulePreloads(PRELOAD_AFTER_START_MS)
                     }
                     MediaPlayer.Event.Buffering ->
                         bufferingView.visibility = if (event.buffering < 100f) View.VISIBLE else View.GONE
@@ -232,29 +262,122 @@ class PlayerActivity : Activity() {
                 }
             }
         })
-        player = mp
     }
 
-    private fun releasePlayer() {
-        val mp = player ?: return
+    /** Returns false when there was no player to release ([onReleased] then never runs). */
+    private fun releasePlayer(onReleased: Runnable? = null): Boolean {
+        val mp = player ?: return false
         player = null
         mp.setEventListener(null)
         mp.detachViews()
         // stop() can block for seconds on a stuck network read; never wait for it on the main thread.
-        VlcEngine.releaseInBackground(mp)
+        VlcEngine.releaseInBackground(mp, onReleased)
+        return true
     }
 
     // ---- playback ----
 
     private fun play(video: Video) {
-        val vlc = libVlc ?: return
-        playingDirectSource = null
+        cancelPendingPlay()
+        handler.removeCallbacks(preloadRefresh)
+        // Preloaded: it is already open, buffered and paused; only the picture needs attaching.
+        preloader.take(video)?.let {
+            showPreloaded(video, it)
+            return
+        }
+        if (libVlc == null) return
         // A fresh player per video: reusing one means setMedia(), which first stops the old input
         // and blocks just like stop(). The old player is stopped in the background instead.
         releasePlayer()
         createPlayer()
         val mp = player ?: return
-        val start = ResumePolicy.startPosition(positions, video.id)
+        val prepared = buildMedia(video)
+        if (prepared == null) {
+            playingVideo = video
+            onVideoFailed()
+            return
+        }
+        playingDirectSource = prepared.directSource
+        playingVideo = video
+        mp.media = prepared.media
+        prepared.media.release()
+        bufferingView.visibility = View.VISIBLE
+        startedAt = SystemClock.elapsedRealtime()
+        mp.play()
+        paused = false
+        pausedIcon.visibility = View.GONE
+        showOverlay()
+    }
+
+    /**
+     * Puts a preloaded player on screen. It was preloaded without video (no surface to decode to),
+     * so the hardware decoder is opened now. Order matters:
+     *  1. attach the views, and wait until both the surface exists and the previous player has been
+     *     released ([SWITCH_WAIT_MS] at most). The TV's hardware decoder serves one player at a time:
+     *     while the old player still held it, LibVLC fell back to software decoding (avcodec), which
+     *     is heavy on this CPU;
+     *  2. select the video track: LibVLC opens the hardware decoder on that surface;
+     *  3. seek to where the player is paused, so the decoder starts from a keyframe instead of
+     *     showing nothing until the next one (the data is still in LibVLC's read-ahead buffer);
+     *  4. play.
+     */
+    private fun showPreloaded(video: Video, warm: Preloader.Warm) {
+        var surfaceReady = false
+        var oldReleased = false
+        var start: Runnable? = null
+        val startWhenReady = Runnable { if (surfaceReady && oldReleased) start?.run() }
+        if (!releasePlayer(Runnable { oldReleased = true; startWhenReady.run() })) oldReleased = true
+        val mp = warm.player
+        listenAsCurrent(mp)
+        player = mp
+        playingDirectSource = warm.directSource
+        playingVideo = video
+        paused = false
+        pausedIcon.visibility = View.GONE
+        showOverlay()
+
+        var begun = false
+        start = Runnable {
+            if (begun || player !== mp) return@Runnable
+            begun = true
+            // Select the video track explicitly, through -1 first, so LibVLC (re)opens the decoder
+            // now that the surface exists. setVideoTrackEnabled(true) does nothing when a track is
+            // still selected, and a decoder opened without a surface is a software one.
+            val track = mp.videoTracks?.firstOrNull { it.id >= 0 }?.id
+            if (track != null) {
+                mp.setVideoTrack(-1)
+                mp.setVideoTrack(track)
+            }
+            val position = mp.time
+            if (position >= 0) mp.time = position
+            mp.volume = 100
+            startedAt = SystemClock.elapsedRealtime()
+            mp.play()
+        }
+        val vout = mp.vlcVout
+        vout.addCallback(object : IVLCVout.Callback {
+            override fun onSurfacesCreated(v: IVLCVout) {
+                v.removeCallback(this)
+                handler.post {
+                    surfaceReady = true
+                    startWhenReady.run()
+                }
+            }
+
+            override fun onSurfacesDestroyed(v: IVLCVout) {}
+        })
+        mp.attachViews(videoLayout, null, false, false)
+        // Never wait longer than this; at worst the video decodes in software.
+        handler.postDelayed(start, SWITCH_WAIT_MS)
+    }
+
+    /**
+     * The media for [video], with the same options for normal playback and for preloading.
+     * Null when it can't be opened (a fallback share while the loopback server is down).
+     */
+    private fun buildMedia(video: Video): Preloader.Prepared? {
+        val vlc = libVlc ?: return null
+        var directSource: String? = null
         val media = when (val location = video.location) {
             is VideoLocation.LocalFile -> Media(vlc, Uri.fromFile(location.file))
             is VideoLocation.Network -> {
@@ -262,7 +385,7 @@ class PlayerActivity : Activity() {
                 // used a whole CPU core on slow TVs and playback starved; it stays as the fallback.
                 val source = if (location.sourceId in directSmbFailed) null else prefs.networkSources.find(location.sourceId)
                 if (source != null) {
-                    playingDirectSource = location.sourceId
+                    directSource = location.sourceId
                     Media(vlc, Uri.parse(SmbDirect.url(source.link, location.path))).apply {
                         SmbDirect.loginOptions(source.link).forEach(::addOption)
                         // The native client delivers steadily, so a short buffer is enough and the
@@ -270,11 +393,7 @@ class PlayerActivity : Activity() {
                         addOption(":network-caching=$DIRECT_NETWORK_CACHING_MS")
                     }
                 } else {
-                    val server = streamServer
-                    if (server == null) {
-                        onVideoFailed()
-                        return
-                    }
+                    val server = streamServer ?: return null
                     Media(vlc, Uri.parse(server.urlFor(location))).apply {
                         // A little more buffer for Wi-Fi hiccups when streaming from a share.
                         addOption(":network-caching=$NETWORK_CACHING_MS")
@@ -284,18 +403,39 @@ class PlayerActivity : Activity() {
         }
         // Hardware decoding when the TV supports the codec; LibVLC falls back to software otherwise.
         media.setHWDecoderEnabled(true, false)
+        val start = ResumePolicy.startPosition(positions, video.id)
         if (start > 0) media.addOption(":start-time=${start / 1000.0}")
-        mp.setMedia(media)
-        media.release()
-        startedAt = SystemClock.elapsedRealtime()
-        mp.play()
-        paused = false
-        pausedIcon.visibility = View.GONE
-        showOverlay()
+        return Preloader.Prepared(media, directSource)
+    }
+
+    // ---- preloading ----
+
+    private fun schedulePreloads(delayMs: Long) {
+        handler.removeCallbacks(preloadRefresh)
+        handler.postDelayed(preloadRefresh, delayMs)
+    }
+
+    /** Asks the preloader for the videos the next presses will reach, in the current mode. */
+    private fun refreshPreloads() {
+        if (!started || player == null || !::navigator.isInitialized) return
+        val (ahead, behind) = if (navigator.mode == PlaybackMode.SERIES) SERIES_AHEAD to SERIES_BEHIND else SHUFFLE_AHEAD to 0
+        preloader.want(navigator.preview(ahead, behind))
+    }
+
+    /** Each preloaded player holds a few MB; stop adding them when the TV runs short of memory. */
+    private fun hasMemoryForPreload(): Boolean {
+        val info = android.app.ActivityManager.MemoryInfo()
+        (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(info)
+        return !info.lowMemory && info.availMem > MIN_FREE_MEMORY_FOR_PRELOAD
+    }
+
+    private fun cancelPendingPlay() {
+        pendingPlay?.let(handler::removeCallbacks)
+        pendingPlay = null
     }
 
     private fun saveCurrentPosition() {
-        val video = navigator.current ?: return
+        val video = playingVideo ?: return
         val mp = player ?: return
         val position = mp.time
         if (position < 0) return // nothing loaded yet
@@ -309,15 +449,33 @@ class PlayerActivity : Activity() {
             showToast(getString(R.string.only_episode))
             return
         }
-        play(next)
+        if (preloader.isReady(next)) {
+            play(next)
+            return
+        }
+        // Not preloaded: show which video is coming, and start loading it only once the presses stop,
+        // so a fast run of Up/Down doesn't open every video it passes. The old one plays meanwhile.
+        cancelPendingPlay()
+        handler.removeCallbacks(preloadRefresh)
+        showOverlay()
+        val run = Runnable {
+            pendingPlay = null
+            play(next)
+        }
+        pendingPlay = run
+        handler.postDelayed(run, COLD_SWITCH_DELAY_MS)
     }
 
     private fun onVideoEnded() {
-        navigator.current?.let { positions.remove(it.id) }
+        // A switch is already on its way; the old video ending changes nothing.
+        if (pendingPlay != null) return
+        playingVideo?.let { positions.remove(it.id) }
         navigator.onVideoEnded()?.let(::play)
     }
 
     private fun onVideoFailed() {
+        // A switch is already on its way; the old video failing changes nothing.
+        if (pendingPlay != null) return
         // LibVLC's native SMB client couldn't open this share: use the loopback server for it from
         // now on, and retry the same video that way before counting it as broken.
         val direct = playingDirectSource
@@ -385,6 +543,7 @@ class PlayerActivity : Activity() {
                 if (firstPress) {
                     if (navigator.enterSeriesMode()) {
                         showToast(getString(R.string.series_mode_on, navigator.current?.folderLabel ?: ""))
+                        schedulePreloads(MODE_CHANGE_PRELOAD_MS) // Up/Down now mean other videos
                     }
                     showOverlay()
                 }
@@ -392,7 +551,10 @@ class PlayerActivity : Activity() {
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 if (firstPress) {
-                    if (navigator.enterShuffleMode()) showToast(getString(R.string.shuffle_mode_on))
+                    if (navigator.enterShuffleMode()) {
+                        showToast(getString(R.string.shuffle_mode_on))
+                        schedulePreloads(MODE_CHANGE_PRELOAD_MS)
+                    }
                     showOverlay()
                 }
                 return true
@@ -485,9 +647,26 @@ class PlayerActivity : Activity() {
             "--avcodec-skiploopfilter=1", // cheaper software H.264/HEVC decoding on slow boxes
             "--no-sub-autodetect-file",
             "--no-osd",
+            // LibVLC reads up to 16 MB ahead of every open file by default. With several videos
+            // preloaded that is too much memory and network for a 1 GB TV; 4 MB is ~18 s at 1.85 Mbit/s.
+            "--prefetch-buffer-size=4096",
         )
         const val NETWORK_CACHING_MS = 3_000
         const val DIRECT_NETWORK_CACHING_MS = 1_000
+
+        /** Videos kept preloaded: shuffle mode takes the next random picks for both Up and Down. */
+        const val SHUFFLE_AHEAD = 5
+        /** Series mode: the next episodes (Down) and the previous ones (Up). */
+        const val SERIES_AHEAD = 3
+        const val SERIES_BEHIND = 2
+        /** Let the video on screen start smoothly before preloading competes for CPU and network. */
+        const val PRELOAD_AFTER_START_MS = 1_500L
+        const val MODE_CHANGE_PRELOAD_MS = 500L
+        /** How long Up/Down must rest before a video that isn't preloaded starts loading. */
+        const val COLD_SWITCH_DELAY_MS = 350L
+        /** Longest wait for the surface and the old player's release before a preloaded player starts. */
+        const val SWITCH_WAIT_MS = 1_500L
+        const val MIN_FREE_MEMORY_FOR_PRELOAD = 200L * 1024 * 1024
         const val RESCAN_AFTER_MS = 10 * 60_000L
         const val OVERLAY_MS = 4_000L
         const val TOAST_MS = 2_000L
