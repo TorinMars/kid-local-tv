@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -16,6 +17,7 @@ import com.kidlocaltv.core.PlaybackNavigator
 import com.kidlocaltv.core.PositionStore
 import com.kidlocaltv.core.ResumePolicy
 import com.kidlocaltv.core.Video
+import com.kidlocaltv.core.VideoLibrary
 import com.kidlocaltv.core.VideoLocation
 import com.kidlocaltv.data.AppPrefs
 import com.kidlocaltv.data.PrefsPositionStore
@@ -72,15 +74,18 @@ class PlayerActivity : Activity() {
     private var continueCurrentOnStart = false
     private var consecutiveErrors = 0
 
+    /** Between onStart and onStop. A library load that finishes outside it is dropped. */
+    private var started = false
+    /** Bumped on every load and on stop, so only the newest load result is used. */
+    private var loadGeneration = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = AppPrefs(this)
         positions = PrefsPositionStore(this)
 
-        val library = prefs.scanLibrary()
-        if (!prefs.setupComplete || library.isEmpty) {
-            startActivity(SetupActivity.intent(this, manage = false))
-            finish()
+        if (!prefs.setupComplete) {
+            openSetup()
             return
         }
 
@@ -96,12 +101,12 @@ class PlayerActivity : Activity() {
         pausedIcon = findViewById(R.id.paused_icon)
         toastText = findViewById(R.id.toast)
 
-        navigator = PlaybackNavigator(library)
-        libVlc = LibVLC(applicationContext, VLC_OPTIONS)
+        // The window shows straight away; the library and LibVLC load in the background (onStart).
+        bufferingView.visibility = View.VISIBLE
     }
 
     override fun onDestroy() {
-        libVlc?.release()
+        // The LibVLC instance is shared by the whole process (VlcEngine), so it is not released here.
         libVlc = null
         super.onDestroy()
     }
@@ -109,24 +114,58 @@ class PlayerActivity : Activity() {
     override fun onStart() {
         super.onStart()
         if (isFinishing) return
+        started = true
+        startStreamServer()
+        loadLibraryThenPlay()
+    }
 
-        val library = prefs.scanLibrary()
+    /**
+     * Scans the library and gets LibVLC off the main thread, then starts playback on it. Both are slow
+     * on low-end TVs; on the main thread they froze the window long enough to cause an ANR.
+     */
+    private fun loadLibraryThenPlay() {
+        val generation = ++loadGeneration
+        val app = applicationContext
+        Thread {
+            val library = prefs.scanLibrary()
+            val vlc = try {
+                VlcEngine.get(app, VLC_OPTIONS)
+            } catch (e: Throwable) {
+                Log.e(TAG, "LibVLC could not start", e)
+                null
+            }
+            handler.post { onLoaded(generation, library, vlc) }
+        }.apply { isDaemon = true; name = "player-load" }.start()
+    }
+
+    private fun onLoaded(generation: Int, library: VideoLibrary, vlc: LibVLC?) {
+        if (generation != loadGeneration || !started || isFinishing || isDestroyed) return
         if (library.isEmpty) {
-            startActivity(SetupActivity.intent(this, manage = false))
-            finish()
+            openSetup()
             return
         }
-        navigator.updateLibrary(library)
+        if (vlc == null) {
+            bufferingView.visibility = View.GONE
+            showToast(getString(R.string.nothing_playable))
+            return
+        }
+        libVlc = vlc
+        if (::navigator.isInitialized) navigator.updateLibrary(library) else navigator = PlaybackNavigator(library)
 
-        startStreamServer()
         refreshNetworkSourcesInBackground()
-        createPlayer()
         val video = if (continueCurrentOnStart && navigator.current != null) navigator.current else navigator.start()
         continueCurrentOnStart = false
         video?.let(::play)
     }
 
+    private fun openSetup() {
+        startActivity(SetupActivity.intent(this, manage = false))
+        finish()
+    }
+
     override fun onStop() {
+        started = false
+        loadGeneration++ // a load still running finishes into nothing
         if (::navigator.isInitialized) saveCurrentPosition()
         releasePlayer()
         streamServer?.stopServer()
@@ -194,16 +233,20 @@ class PlayerActivity : Activity() {
         val mp = player ?: return
         player = null
         mp.setEventListener(null)
-        mp.stop()
         mp.detachViews()
-        mp.release()
+        // stop() can block for seconds on a stuck network read; never wait for it on the main thread.
+        VlcEngine.releaseInBackground(mp)
     }
 
     // ---- playback ----
 
     private fun play(video: Video) {
-        val mp = player ?: return
         val vlc = libVlc ?: return
+        // A fresh player per video: reusing one means setMedia(), which first stops the old input
+        // and blocks just like stop(). The old player is stopped in the background instead.
+        releasePlayer()
+        createPlayer()
+        val mp = player ?: return
         val start = ResumePolicy.startPosition(positions, video.id)
         val media = when (val location = video.location) {
             is VideoLocation.LocalFile -> Media(vlc, Uri.fromFile(location.file))
@@ -296,6 +339,8 @@ class PlayerActivity : Activity() {
     // ---- remote control ----
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Until the background load has created the player, the navigator may not exist yet.
+        if (player == null) return super.onKeyDown(keyCode, event)
         val firstPress = event.repeatCount == 0
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
@@ -350,6 +395,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (player == null) return super.onKeyLongPress(keyCode, event)
         if (isCenterKey(keyCode)) {
             openManageScreen()
             return true
@@ -358,6 +404,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (player == null) return super.onKeyUp(keyCode, event)
         if (isCenterKey(keyCode)) {
             val wasLongPress = (event.flags and KeyEvent.FLAG_CANCELED_LONG_PRESS) != 0
             if (event.isTracking && !event.isCanceled && !wasLongPress) togglePause()
@@ -400,6 +447,8 @@ class PlayerActivity : Activity() {
     }
 
     private companion object {
+        const val TAG = "PlayerActivity"
+
         /** Options tuned for modest TV hardware: keep audio smooth, let software decoding skip work. */
         val VLC_OPTIONS = arrayListOf(
             "--audio-time-stretch",

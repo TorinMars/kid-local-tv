@@ -12,10 +12,14 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import com.kidlocaltv.R
+import com.kidlocaltv.core.VideoLibrary
 import com.kidlocaltv.data.AppPrefs
 import com.kidlocaltv.server.ImportServer
 import com.kidlocaltv.server.NetworkInfo
 import java.io.IOException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Shown on first launch (and later via long-press OK / Menu on the player).
@@ -35,6 +39,12 @@ class SetupActivity : Activity() {
     private lateinit var doneButton: Button
 
     private val isManageMode: Boolean get() = intent.getBooleanExtra(EXTRA_MANAGE, false)
+
+    /** Library scans read many files; on a slow TV they froze this screen when run on the main thread. */
+    private val scanner: ExecutorService = Executors.newSingleThreadExecutor()
+    private val scanQueued = AtomicBoolean(false)
+    /** Video count from the newest finished scan; -1 until the first scan is done. */
+    private var lastCount = -1
 
     private val refreshTick = object : Runnable {
         override fun run() {
@@ -73,6 +83,11 @@ class SetupActivity : Activity() {
         server?.stopServer()
         server = null
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        scanner.shutdownNow()
+        super.onDestroy()
     }
 
     private fun startServer() {
@@ -120,9 +135,23 @@ class SetupActivity : Activity() {
         qrImage.visibility = View.VISIBLE
     }
 
+    /** Scans in the background and shows the result; a scan already waiting to run covers this call. */
     private fun refreshCount() {
-        val library = prefs.scanLibrary()
+        if (!scanQueued.compareAndSet(false, true)) return
+        try {
+            scanner.execute {
+                scanQueued.set(false)
+                val library = prefs.scanLibrary()
+                handler.post { if (!isDestroyed) showCount(library) }
+            }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            scanQueued.set(false) // the screen is closing
+        }
+    }
+
+    private fun showCount(library: VideoLibrary) {
         val count = library.size
+        lastCount = count
         countText.text = if (count == 0) {
             getString(R.string.count_none)
         } else {
@@ -134,7 +163,8 @@ class SetupActivity : Activity() {
     }
 
     private fun finishSetup() {
-        if (prefs.scanLibrary().isEmpty) return
+        // The button is only enabled once a scan found videos; use that result instead of rescanning here.
+        if (lastCount <= 0) return
         prefs.setupComplete = true
         if (!isManageMode) {
             startActivity(Intent(this, PlayerActivity::class.java))
