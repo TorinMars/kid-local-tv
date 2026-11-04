@@ -186,6 +186,9 @@ The player can also be selected as the Android default Home app. After installin
 default-home settings, or run `adb shell cmd package set-home-activity com.kidlocaltv/.ui.PlayerActivity`.
 Home then opens the player and its existing video library. Selecting a different Home app reverses this.
 Some TVs route their remote's Home button or startup through vendor settings and require separate setup.
+While selected as default Home, the app also requests to open its player on the system's boot-completed
+broadcast. Vendor firmware can suppress that broadcast or override the startup screen, and newer Android
+versions can restrict background activity launches, so startup behavior must be checked on the actual TV.
 
 Playback pauses when a focusable overlay, such as a parental-control lock screen, takes focus. It resumes
 when focus returns if it was playing before the overlay appeared; a manually paused video stays paused.
