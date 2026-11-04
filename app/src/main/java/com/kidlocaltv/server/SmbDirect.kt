@@ -3,12 +3,18 @@ package com.kidlocaltv.server
 import java.net.URLEncoder
 
 /**
- * Lets LibVLC open a share file itself, with its own SMB2/3 client (libsmb2, native code).
+ * Lets LibVLC open a share file itself, with its own native SMB clients.
  *
  * Streaming through [SmbStreamServer] goes through smbj, a pure-Java SMB client. On a 32-bit TV
  * its packet reader used a whole CPU core to deliver a 1.85 Mbit/s video, and playback starved.
- * LibVLC's native client does the same work with far less CPU. The loopback server stays as the
- * fallback for shares the native client can't open.
+ * LibVLC's native clients do the same work with far less CPU. The loopback server stays as the
+ * fallback for shares they can't open.
+ *
+ * LibVLC tries libsmb2 (SMB2/3) first and then libdsm (SMB1). Against a macOS share libsmb2 got
+ * STATUS_LOGON_FAILURE with the same login smbj and libdsm accept, so libdsm does the playing
+ * there. libdsm looks up the server's NetBIOS name when the link uses an IP address and waits 1 s
+ * when the server doesn't answer; LibVLC's taglib meta reader opens the file a second time, so
+ * that wait happens twice per video.
  */
 object SmbDirect {
     /** [path] is the file's path from the share root, as stored in the index (`\` or `/` separators). */

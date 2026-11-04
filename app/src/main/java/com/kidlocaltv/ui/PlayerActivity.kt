@@ -265,7 +265,9 @@ class PlayerActivity : Activity() {
                     playingDirectSource = location.sourceId
                     Media(vlc, Uri.parse(SmbDirect.url(source.link, location.path))).apply {
                         SmbDirect.loginOptions(source.link).forEach(::addOption)
-                        addOption(":network-caching=$NETWORK_CACHING_MS")
+                        // The native client delivers steadily, so a short buffer is enough and the
+                        // video starts sooner after Up/Down.
+                        addOption(":network-caching=$DIRECT_NETWORK_CACHING_MS")
                     }
                 } else {
                     val server = streamServer
@@ -485,6 +487,7 @@ class PlayerActivity : Activity() {
             "--no-osd",
         )
         const val NETWORK_CACHING_MS = 3_000
+        const val DIRECT_NETWORK_CACHING_MS = 1_000
         const val RESCAN_AFTER_MS = 10 * 60_000L
         const val OVERLAY_MS = 4_000L
         const val TOAST_MS = 2_000L
