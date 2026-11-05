@@ -562,8 +562,15 @@ class PlayerActivity : Activity() {
     /** Asks the preloader for the videos the next presses will reach, in the current mode. */
     private fun refreshPreloads() {
         if (!started || player == null || !::navigator.isInitialized) return
-        val (ahead, behind) = if (navigator.mode == PlaybackMode.SERIES) SERIES_AHEAD to SERIES_BEHIND else SHUFFLE_AHEAD to 0
-        preloader.want(navigator.preview(ahead, behind))
+        val wanted = if (navigator.mode == PlaybackMode.SERIES) {
+            navigator.preview(SERIES_AHEAD, SERIES_BEHIND)
+        } else {
+            // Next and previous episode first (Right, Left and the end of the video), then random picks for Up/Down.
+            val episodes = navigator.episodeNeighbours()
+            val ids = episodes.mapTo(mutableSetOf()) { it.id }
+            episodes + navigator.preview(SHUFFLE_RANDOM_AHEAD, 0).filter { it.id !in ids }
+        }
+        preloader.want(wanted)
     }
 
     /** Each preloaded player holds a few MB; stop adding them when the TV runs short of memory. */
@@ -786,23 +793,11 @@ class PlayerActivity : Activity() {
                 return true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (firstPress) {
-                    if (navigator.enterSeriesMode()) {
-                        showToast(getString(R.string.series_mode_on, navigator.current?.folderLabel ?: ""))
-                        schedulePreloads(MODE_CHANGE_PRELOAD_MS) // Up/Down now mean other videos
-                    }
-                    showOverlay()
-                }
+                if (firstPress) switchVideo { navigator.nextEpisode() }
                 return true
             }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
-                if (firstPress) {
-                    if (navigator.enterShuffleMode()) {
-                        showToast(getString(R.string.shuffle_mode_on))
-                        schedulePreloads(MODE_CHANGE_PRELOAD_MS)
-                    }
-                    showOverlay()
-                }
+                if (firstPress) switchVideo { navigator.previousEpisode() }
                 return true
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
@@ -921,8 +916,8 @@ class PlayerActivity : Activity() {
         const val NETWORK_CACHING_MS = 3_000
         const val DIRECT_NETWORK_CACHING_MS = 1_000
 
-        /** Videos kept preloaded: shuffle mode takes the next random picks for both Up and Down. */
-        const val SHUFFLE_AHEAD = 5
+        /** Shuffle mode preloads the next and previous episode, plus this many random picks for Up and Down. */
+        const val SHUFFLE_RANDOM_AHEAD = 3
         /** Series mode: the next episodes (Down) and the previous ones (Up). */
         const val SERIES_AHEAD = 3
         const val SERIES_BEHIND = 2

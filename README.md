@@ -18,8 +18,8 @@ Everything is set up on the TV with the remote, including the network folder; a 
 | 📡 **Network folders (SMB)** | Add `192.168.1.20/Videos` (or `smb://nas/Videos`, `\\nas\Videos`) and the TV **streams** from it. Nothing is copied, so the TV only stores a tiny file list. |
 | 🎞 **Plays almost anything** | [LibVLC](https://www.videolan.org/vlc/libvlc.html) decodes MP4, MKV, AVI/DivX/Xvid, WMV, MPEG-2, HEVC, VP9, AV1, AC3/DTS audio and more, using hardware decoding when the TV supports the codec. |
 | ▶️ **Instant playback** | Every launch after setup goes straight to full screen and plays a random video after about 1 s. ▲/▼ switch in 0.2–0.4 s, because the next videos are already loaded. |
-| 🔀 **Shuffle mode** | ▲ or ▼ plays another random video from the *whole* library, whatever folder or file order. |
-| 📺 **Series mode** | ▶ locks onto the current video's folder. ▲ / ▼ then step through its episodes in order. |
+| 🔀 **Shuffle** | ▲ or ▼ plays another random video from the *whole* library, whatever folder or file order. |
+| 📺 **Episodes** | ◀ / ▶ go to the previous / next episode in the current video's folder. When a video ends, the next episode starts. |
 | 🔖 **Resume** | Each time ▲/▼ switches videos, the spot in the video you left is saved. That video resumes there next time. |
 | 👪 **Parental controls** | Daily watch time, breaks, and bedtime hours, set on the TV behind a parent PIN. When time is up, a resting train replaces the video. |
 | 🚂 **Train loading screen** | While a video opens, a full-screen train rolls by instead of a black screen. |
@@ -75,7 +75,7 @@ Paste a shared folder, and add a login if the share needs one. All of these form
 
 - **Nothing is copied.** The TV saves the link, the login and a small list of file names (a few KB). Each video is read from the share while it plays, and seeking and resume work as usual. LibVLC opens the share with its own native SMB client, which needs little CPU; the app's loopback stream server (smbj) is the fallback for shares that client can't open.
 - **Fast start.** The app starts from the cached file list, so launch is instant. It then re-checks each share in the background (at most every 10 minutes) to pick up new episodes.
-- **Share switched off?** Its videos are skipped, and anything else in the library keeps playing. If a whole series is offline, playback returns to shuffle mode.
+- **Share switched off?** Its videos are skipped, and anything else in the library keeps playing.
 - **Rescan / Remove** buttons are on the TV's Network folders screen and on the web page. Removing a network folder never touches the share.
 - Works with SMB 2 and 3 shares: Windows, macOS file sharing, Samba, Synology, QNAP, TrueNAS and others. Guest shares need no login. NAS housekeeping folders such as `@eaDir` and `#recycle`, and hidden files, are ignored.
 - The login is stored in the app's private storage on the TV, so the app can play the videos later. Re-adding a share with a wrong password keeps the previous, working login.
@@ -90,69 +90,41 @@ Paste a shared folder, and add a login if the share needs one. All of these form
 
 ### 3. Every launch after: straight to playback
 
-The app opens full screen and starts a random video in **shuffle mode**. A small card shows the current mode, the title, and where it sits in its folder, then fades after a few seconds.
+The app opens full screen and starts a random video. A small card shows the title and where it sits in its folder, then fades after a few seconds.
 
 - **About 1 s to the first picture.** Each time the library loads, the app picks the video for the next start and saves it. On launch it plays that video at once, while the library loads in the background (▲/▼ work as soon as it's in, after about half a second).
 - **Train loading screen.** While a video opens, a full-screen train with a bear driver rolls through the hills instead of a black screen. It fades out when the video starts.
-- **Instant ▲/▼.** While a video plays, the app opens the next videos in the background, muted and paused: the next 5 random picks in shuffle mode, the next 3 and previous 2 episodes in series mode. Switching to one takes 0.2–0.4 s. A video that isn't ready yet starts loading only once the presses stop, so a fast run of ▲/▼ stays smooth. Preloading pauses when the TV is low on memory.
+- **Instant ▲/▼ and ◀/▶.** While a video plays, the app opens the next videos in the background, muted and paused: the next and previous episode in the folder, and the next 3 random picks. Switching to one takes 0.2–0.4 s. A video that isn't ready yet starts loading only once the presses stop, so a fast run of presses stays smooth. Preloading pauses when the TV is low on memory.
 
-<p align="center"><img src="docs/images/diagram-modes.png" width="900" alt="Shuffle mode jumps across the whole library; series mode steps through one folder"></p>
-
-#### Shuffle mode
+#### ▲ ▼ Random videos
 
 - ▲ and ▼ both pick **another random video from the entire library**, local and network videos alike.
 - A "shuffle bag" makes sure every video plays once before any repeats, and the video that's playing never comes up again straight away.
-- When a video ends, another random one starts.
 
-#### Series mode
+#### ◀ ▶ Episodes in the same folder
 
-Press **▶** while something is playing to switch to series mode for that video's folder.
+- **◀** goes to the **previous** episode and **▶** to the **next** one, in the folder of the video that is playing. Both wrap around at the ends of the folder.
+- Episodes are in natural order: `Episode 2` comes before `Episode 10`.
+- In a folder with only one video, ◀ ▶ show "This is the only video in this folder".
 
-- **▲** goes to the **previous** episode and **▼** to the **next** one. Both wrap around at the ends of the folder.
-- When an episode ends, the next one starts automatically.
-- Press **◀** to go back to shuffle mode.
+#### When a video ends
 
-<p align="center"><img src="docs/images/tv-series.png" width="820" alt="Series mode on screen, with the 'Series mode: Ocean Friends' notice"></p>
-
-### 4. Resume where you left off
-
-<p align="center"><img src="docs/images/diagram-resume.png" width="900" alt="Position is saved when switching videos and restored later"></p>
-
-- Every ▲ / ▼ switch saves the current position of the video **being left**.
-- When that video plays again, in either mode, it starts from the saved spot. This works for network videos too.
-- Positions within the first 5 s or the last 15 s aren't kept, so a finished video starts fresh.
-- Leaving the app (Home) also saves the current spot.
-
----
-
-## Supported formats
-
-Playback uses **LibVLC 3.7** (from VideoLAN, the VLC engine). For each video it tries the TV's hardware decoder (MediaCodec) first and falls back to software decoding (libavcodec) when the hardware can't handle the codec.
-
-| Containers | `mp4 m4v mkv webm mov avi divx wmv asf flv f4v ts m2ts mts vob mpg mpeg m2v 3gp 3g2 ogv ogm rm rmvb dv mxf nut wtv dvr-ms ivf …` |
-|---|---|
-| Video codecs | H.264, H.265/HEVC, VP8, VP9, AV1, MPEG-1/2/4, DivX/Xvid, WMV 7/8/9, VC-1, Theora, RealVideo, ProRes, DV, MJPEG, and more |
-| Audio codecs | AAC, MP3, AC3/E-AC3, DTS, FLAC, Opus, Vorbis, WMA, PCM, and more |
-
-Software decoding of high-resolution HEVC or AV1 can be too slow on low-end TV boxes. If a file stutters, H.264 MP4 at 1080p is the safest choice. A file that can't be played is skipped with a short notice.
-
----
+- The **next episode in the same folder** starts automatically. After the last episode, the folder starts again from the first.
+- A video that is alone in its folder is followed by a random video.
 
 ## Remote control
 
-<p align="center"><img src="docs/images/diagram-remote.png" width="900" alt="Remote control reference"></p>
 
-| Button | Shuffle mode | Series mode |
-|---|---|---|
-| ▲ Up | Random video | Previous episode in folder |
-| ▼ Down | Random video | Next episode in folder |
-| ▶ Right | Switch to series mode | (stays in series mode) |
-| ◀ Left | (stays in shuffle mode) | Switch to shuffle mode |
-| OK / Play-Pause | Pause / resume | Pause / resume |
-| **Hold OK** or Menu | Open **Parent settings** (PIN) | Open **Parent settings** (PIN) |
-| Back | Does nothing (this is the kids' home screen) | Does nothing |
-| Channel ▲▼, ⏮ ⏭ | Same as ▲▼ | Same as ▲▼ |
-| ⏪ ⏩ | Seek −/+ 10 s | Seek −/+ 10 s |
+| Button | Action |
+|---|---|
+| ▲ Up / ▼ Down | Random video |
+| ◀ Left | Previous episode in the same folder |
+| ▶ Right | Next episode in the same folder |
+| OK / Play-Pause | Pause / resume |
+| **Hold OK** or Menu | Open **Parent settings** (PIN) |
+| Back | Does nothing (this is the kids' home screen) |
+| Channel ▲▼, ⏮ ⏭ | Same as ▲▼ |
+| ⏪ ⏩ | Seek −/+ 10 s |
 
 <p align="center"><img src="docs/images/tv-paused.png" width="640" alt="Paused playback"></p>
 

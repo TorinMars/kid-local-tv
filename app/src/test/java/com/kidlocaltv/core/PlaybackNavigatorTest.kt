@@ -105,6 +105,54 @@ class PlaybackNavigatorTest {
     }
 
     @Test
+    fun leftAndRightStepThroughFolderInShuffleModeAndKeepTheMode() {
+        val nav = PlaybackNavigator(library, Random(3))
+        nav.restore("Bluey/Episode 2.mp4", PlaybackMode.SHUFFLE)
+        assertEquals("Bluey/Episode 10.mp4", nav.nextEpisode()!!.id)
+        assertEquals("Bluey/Episode 1.mp4", nav.nextEpisode()!!.id) // wraps
+        assertEquals("Bluey/Episode 10.mp4", nav.previousEpisode()!!.id) // wraps back
+        assertEquals(PlaybackMode.SHUFFLE, nav.mode)
+        // Up/Down still pick random videos.
+        assertNotEquals("Bluey/Episode 10.mp4", nav.down()!!.id)
+    }
+
+    @Test
+    fun leftAndRightInSingleVideoFolderDoNothing() {
+        val nav = PlaybackNavigator(library)
+        nav.restore("Loose clip.mp4", PlaybackMode.SHUFFLE)
+        assertNull(nav.nextEpisode())
+        assertNull(nav.previousEpisode())
+        assertEquals("Loose clip.mp4", nav.current!!.id)
+        assertTrue(nav.episodeNeighbours().isEmpty())
+    }
+
+    @Test
+    fun endOfVideoInShuffleModePlaysNextEpisode() {
+        val nav = PlaybackNavigator(library, Random(5))
+        nav.restore("Bluey/Episode 1.mp4", PlaybackMode.SHUFFLE)
+        assertEquals("Bluey/Episode 2.mp4", nav.onVideoEnded()!!.id)
+        assertEquals("Bluey/Episode 10.mp4", nav.onVideoEnded()!!.id)
+        assertEquals("Bluey/Episode 1.mp4", nav.onVideoEnded()!!.id) // wraps to the first
+        assertEquals(PlaybackMode.SHUFFLE, nav.mode)
+    }
+
+    @Test
+    fun endOfLoneVideoInShuffleModePlaysAnotherVideo() {
+        val nav = PlaybackNavigator(library, Random(5))
+        nav.restore("Loose clip.mp4", PlaybackMode.SHUFFLE)
+        assertNotEquals("Loose clip.mp4", nav.onVideoEnded()!!.id)
+    }
+
+    @Test
+    fun episodeNeighboursAreNextThenPrevious() {
+        val nav = PlaybackNavigator(library)
+        nav.restore("Bluey/Episode 2.mp4", PlaybackMode.SHUFFLE)
+        assertEquals(listOf("Episode 10.mp4", "Episode 1.mp4"), nav.episodeNeighbours().map { it.name })
+        nav.restore("Trains/Diesel.mp4", PlaybackMode.SHUFFLE)
+        assertEquals(listOf("Steam.mp4"), nav.episodeNeighbours().map { it.name }) // two episodes: listed once
+    }
+
+    @Test
     fun updateLibraryDropsMissingCurrent() {
         val nav = PlaybackNavigator(library)
         nav.restore("Trains/Diesel.mp4", PlaybackMode.SERIES)

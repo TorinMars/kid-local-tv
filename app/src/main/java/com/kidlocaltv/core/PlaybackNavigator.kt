@@ -11,6 +11,8 @@ enum class PlaybackMode { SHUFFLE, SERIES }
  *   A "shuffle bag" is used so every video is seen once before any repeats.
  * - Series mode: Up/Down move to the previous/next video in the current video's folder,
  *   wrapping around at either end.
+ * - In both modes, Left/Right move to the previous/next episode in the current video's folder,
+ *   and a video that plays to the end is followed by the next episode in its folder.
  */
 class PlaybackNavigator(
     library: VideoLibrary,
@@ -89,25 +91,41 @@ class PlaybackNavigator(
         PlaybackMode.SERIES -> switchTo(episodeOffset(+1))
     }
 
-    /** Right on the remote: lock onto the current video's folder. Returns true if the mode changed. */
+    /** Left on the remote: the previous episode in the current video's folder (wraps). Null if it has no other. */
+    fun previousEpisode(): Video? = switchTo(episodeOffset(-1))
+
+    /** Right on the remote: the next episode in the current video's folder (wraps). Null if it has no other. */
+    fun nextEpisode(): Video? = switchTo(episodeOffset(+1))
+
+    /** The videos Left/Right and the end of the video lead to, next episode first, without switching. */
+    fun episodeNeighbours(): List<Video> =
+        listOfNotNull(episodeOffset(+1), episodeOffset(-1)).distinctBy { it.id }
+
+    /** Locks onto the current video's folder, so Up/Down step through its episodes. Returns true if the mode changed. */
     fun enterSeriesMode(): Boolean {
         if (current == null || mode == PlaybackMode.SERIES) return false
         mode = PlaybackMode.SERIES
         return true
     }
 
-    /** Left on the remote: go back to shuffling the whole library. Returns true if the mode changed. */
+    /** Goes back to shuffling the whole library with Up/Down. Returns true if the mode changed. */
     fun enterShuffleMode(): Boolean {
         if (mode == PlaybackMode.SHUFFLE) return false
         mode = PlaybackMode.SHUFFLE
         return true
     }
 
-    /** Called when the current video plays to the end. Series mode continues with the next episode. */
-    fun onVideoEnded(): Video? = when (mode) {
-        PlaybackMode.SHUFFLE -> switchTo(nextRandom())
-        PlaybackMode.SERIES -> switchTo(episodeOffset(+1) ?: current)
-    }
+    /**
+     * Called when the current video plays to the end: the next episode in its folder, wrapping to the
+     * first after the last. A video alone in its folder is followed by a random one in shuffle mode,
+     * and plays again in series mode.
+     */
+    fun onVideoEnded(): Video? = switchTo(
+        episodeOffset(+1) ?: when (mode) {
+            PlaybackMode.SHUFFLE -> nextRandom()
+            PlaybackMode.SERIES -> current
+        }
+    )
 
     /** Called when the current video can't be played; always moves on to something else. */
     fun skipBroken(): Video? = when (mode) {

@@ -24,10 +24,8 @@
     <string name="mode_shuffle">🔀  Shuffle</string>
     <string name="mode_series">📺  Series</string>
     <string name="episode_detail">%1$s · %2$d of %3$d</string>
-    <string name="hint_shuffle">"▲ ▼ random video     ▶ series mode"</string>
-    <string name="hint_series">"▲ previous     ▼ next     ◀ shuffle"</string>
-    <string name="series_mode_on">Series mode: %1$s</string>
-    <string name="shuffle_mode_on">Shuffle mode</string>
+    <string name="hint_shuffle">"▲ ▼ random video     ◀ ▶ previous / next episode"</string>
+    <string name="hint_series">"▲ ▼ ◀ ▶ previous / next episode"</string>
     <string name="only_episode">This is the only video in this folder</string>
     <string name="cannot_play">Couldn\'t play \"%1$s\" – skipping</string>
     <string name="nothing_playable">None of the videos could be played</string>
