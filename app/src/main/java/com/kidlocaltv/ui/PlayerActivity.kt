@@ -55,6 +55,7 @@ class PlayerActivity : Activity() {
 
     private lateinit var videoLayout: VLCVideoLayout
     private lateinit var bufferingView: View
+    private lateinit var loadingScreen: View
     private lateinit var overlay: View
     private lateinit var modeText: TextView
     private lateinit var titleText: TextView
@@ -124,6 +125,7 @@ class PlayerActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         videoLayout = findViewById(R.id.video_layout)
         bufferingView = findViewById(R.id.buffering)
+        loadingScreen = findViewById(R.id.loading_screen)
         overlay = findViewById(R.id.overlay)
         modeText = findViewById(R.id.overlay_mode)
         titleText = findViewById(R.id.overlay_title)
@@ -132,8 +134,9 @@ class PlayerActivity : Activity() {
         pausedIcon = findViewById(R.id.paused_icon)
         toastText = findViewById(R.id.toast)
 
-        // The window shows straight away; the library and LibVLC load in the background (onStart).
-        bufferingView.visibility = View.VISIBLE
+        // The window shows straight away, with the train; the library and LibVLC load in the
+        // background (onStart).
+        showLoadingScreen()
     }
 
     override fun onDestroy() {
@@ -190,7 +193,7 @@ class PlayerActivity : Activity() {
         engineReady = true
         libVlc = vlc
         if (vlc == null) {
-            bufferingView.visibility = View.GONE
+            hideLoadingScreen()
             showToast(getString(R.string.nothing_playable))
             return
         }
@@ -334,6 +337,7 @@ class PlayerActivity : Activity() {
                     MediaPlayer.Event.Playing -> {
                         consecutiveErrors = 0
                         bufferingView.visibility = View.GONE
+                        hideLoadingScreen()
                         if (loadStartedAt > 0) {
                             Log.i(TAG, "Startup: first video playing after ${SystemClock.elapsedRealtime() - loadStartedAt} ms")
                             loadStartedAt = 0
@@ -343,8 +347,9 @@ class PlayerActivity : Activity() {
                         // The video on screen has started: now prepare the next ones.
                         schedulePreloads(PRELOAD_AFTER_START_MS)
                     }
-                    MediaPlayer.Event.Buffering ->
-                        bufferingView.visibility = if (event.buffering < 100f) View.VISIBLE else View.GONE
+                    // While the train is up it already says "loading"; the spinner is for later pauses.
+                    MediaPlayer.Event.Buffering -> bufferingView.visibility =
+                        if (event.buffering < 100f && loadingScreen.visibility != View.VISIBLE) View.VISIBLE else View.GONE
                     // Leave LibVLC's callback before starting the next video.
                     MediaPlayer.Event.EndReached -> handler.post {
                         if (player !== mp) return@post
@@ -395,7 +400,8 @@ class PlayerActivity : Activity() {
         playingVideo = video
         mp.media = prepared.media
         prepared.media.release()
-        bufferingView.visibility = View.VISIBLE
+        bufferingView.visibility = View.GONE
+        showLoadingScreen()
         startedAt = SystemClock.elapsedRealtime()
         mp.play()
         paused = false
@@ -586,6 +592,7 @@ class PlayerActivity : Activity() {
         failed?.let { positions.remove(it.id) }
         consecutiveErrors++
         if (consecutiveErrors >= navigator.library.size.coerceAtLeast(1)) {
+            hideLoadingScreen()
             showToast(getString(R.string.nothing_playable))
             return
         }
@@ -727,6 +734,21 @@ class PlayerActivity : Activity() {
         handler.postDelayed(hideOverlay, OVERLAY_MS)
     }
 
+    private fun showLoadingScreen() {
+        loadingScreen.animate().cancel()
+        loadingScreen.alpha = 1f
+        loadingScreen.visibility = View.VISIBLE
+    }
+
+    /** Fades the train out, so the first frames of the video come in softly. */
+    private fun hideLoadingScreen() {
+        if (loadingScreen.visibility != View.VISIBLE) return
+        loadingScreen.animate().cancel()
+        loadingScreen.animate().alpha(0f).setDuration(LOADING_FADE_MS)
+            .withEndAction { loadingScreen.visibility = View.GONE }
+            .start()
+    }
+
     private fun showToast(message: String) {
         toastText.text = message
         toastText.animate().cancel()
@@ -766,6 +788,7 @@ class PlayerActivity : Activity() {
         const val MIN_FREE_MEMORY_FOR_PRELOAD = 200L * 1024 * 1024
         const val RESCAN_AFTER_MS = 10 * 60_000L
         const val OVERLAY_MS = 4_000L
+        const val LOADING_FADE_MS = 300L
         const val TOAST_MS = 2_000L
         const val SEEK_MS = 10_000L
     }

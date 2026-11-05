@@ -11,6 +11,14 @@
         android:layout_height="match_parent"
         android:focusable="false" />
 
+    <!-- Full-screen train scene while a video opens (app start, or a switch that wasn't preloaded). -->
+    <com.kidlocaltv.ui.TrainLoadingView
+        android:id="@+id/loading_screen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="false" />
+
+    <!-- Short pauses to buffer in the middle of a video. -->
     <ProgressBar
         android:id="@+id/buffering"
         android:layout_width="64dp"
