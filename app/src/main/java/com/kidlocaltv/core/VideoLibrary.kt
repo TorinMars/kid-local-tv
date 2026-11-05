@@ -7,9 +7,14 @@ import java.io.File
  */
 class VideoLibrary(videos: List<Video>) {
 
-    val videos: List<Video> = videos.sortedWith(
-        compareBy<Video, String>(NaturalOrder) { it.folder }.thenBy(NaturalOrder) { it.name }
-    )
+    /**
+     * Sorted by folder, then by name. Folders are sorted once and the names inside each folder
+     * separately: comparing the long, shared folder name in every comparison made this slow.
+     */
+    val videos: List<Video> = videos.groupBy { it.folder }
+        .entries
+        .sortedWith { x, y -> NaturalOrder.compare(x.key, y.key) }
+        .flatMap { (_, inFolder) -> inFolder.sortedWith { x, y -> NaturalOrder.compare(x.name, y.name) } }
 
     private val byFolder: Map<String, List<Video>> = this.videos.groupBy { it.folder }
     private val byId: Map<String, Video> = this.videos.associateBy { it.id }

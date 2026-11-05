@@ -2,6 +2,8 @@ package com.kidlocaltv.data
 
 import android.content.Context
 import com.kidlocaltv.core.PositionStore
+import com.kidlocaltv.core.Video
+import com.kidlocaltv.core.VideoLocation
 import com.kidlocaltv.core.VideoLibrary
 import com.kidlocaltv.server.NetworkSources
 import java.io.File
@@ -26,8 +28,57 @@ class AppPrefs(context: Context) {
     fun scanLibrary(): VideoLibrary =
         VideoLibrary(VideoLibrary.scan(libraryRoot).videos + networkSources.videos())
 
+    /**
+     * The video to play the moment the app opens next time, picked while the library is loaded.
+     * Playback then starts without waiting for the library, which takes a while for a big share.
+     * Null when none is saved; a video that is gone by then just fails and is skipped.
+     */
+    var startVideo: Video?
+        get() {
+            val id = prefs.getString(KEY_START_ID, null) ?: return null
+            val folder = prefs.getString(KEY_START_FOLDER, null) ?: return null
+            val name = prefs.getString(KEY_START_NAME, null) ?: return null
+            val location = when (prefs.getString(KEY_START_KIND, null)) {
+                "local" -> VideoLocation.LocalFile(File(prefs.getString(KEY_START_FILE, null) ?: return null))
+                "smb" -> VideoLocation.Network(
+                    sourceId = prefs.getString(KEY_START_SOURCE, null) ?: return null,
+                    path = prefs.getString(KEY_START_FILE, null) ?: return null,
+                    size = prefs.getLong(KEY_START_SIZE, 0L),
+                )
+                else -> return null
+            }
+            return Video(id, folder, name, location)
+        }
+        set(video) {
+            val edit = prefs.edit()
+            if (video == null) {
+                listOf(KEY_START_ID, KEY_START_FOLDER, KEY_START_NAME, KEY_START_KIND, KEY_START_FILE,
+                    KEY_START_SOURCE, KEY_START_SIZE).forEach { edit.remove(it) }
+            } else {
+                edit.putString(KEY_START_ID, video.id)
+                    .putString(KEY_START_FOLDER, video.folder)
+                    .putString(KEY_START_NAME, video.name)
+                when (val location = video.location) {
+                    is VideoLocation.LocalFile -> edit.putString(KEY_START_KIND, "local")
+                        .putString(KEY_START_FILE, location.file.path)
+                    is VideoLocation.Network -> edit.putString(KEY_START_KIND, "smb")
+                        .putString(KEY_START_SOURCE, location.sourceId)
+                        .putString(KEY_START_FILE, location.path)
+                        .putLong(KEY_START_SIZE, location.size)
+                }
+            }
+            edit.apply()
+        }
+
     companion object {
         private const val KEY_SETUP_COMPLETE = "setup_complete"
+        private const val KEY_START_ID = "start_id"
+        private const val KEY_START_FOLDER = "start_folder"
+        private const val KEY_START_NAME = "start_name"
+        private const val KEY_START_KIND = "start_kind"
+        private const val KEY_START_FILE = "start_file"
+        private const val KEY_START_SOURCE = "start_source"
+        private const val KEY_START_SIZE = "start_size"
 
         @Volatile private var sources: NetworkSources? = null
 

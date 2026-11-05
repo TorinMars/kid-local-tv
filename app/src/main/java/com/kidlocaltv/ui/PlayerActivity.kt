@@ -101,6 +101,14 @@ class PlayerActivity : Activity() {
     private var started = false
     /** Bumped on every load and on stop, so only the newest load result is used. */
     private var loadGeneration = 0
+    /** When the current start began loading, for the startup timing log; 0 once a video plays. */
+    private var loadStartedAt = 0L
+    /** The saved video playing before the library is in; the navigator learns of it in [onLoaded]. */
+    private var quickStart: Video? = null
+    private var engineReady = false
+    private var loadedLibrary: VideoLibrary? = null
+    /** An end or error of the quick-start video that came before the library; handled in [onLoaded]. */
+    private var eventBeforeLoad: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,42 +151,100 @@ class PlayerActivity : Activity() {
     }
 
     /**
-     * Scans the library and gets LibVLC off the main thread, then starts playback on it. Both are slow
-     * on low-end TVs; on the main thread they froze the window long enough to cause an ANR.
+     * Gets LibVLC and scans the library off the main thread, in parallel. Both are slow on low-end
+     * TVs; on the main thread they froze the window long enough to cause an ANR.
+     *
+     * The video saved last time ([AppPrefs.startVideo]) starts as soon as LibVLC is ready, without
+     * waiting for the library; Up/Down work once the library is in.
      */
     private fun loadLibraryThenPlay() {
         val generation = ++loadGeneration
         val app = applicationContext
+        loadStartedAt = SystemClock.elapsedRealtime()
+        loadedLibrary = null
+        engineReady = false
+        quickStart = if (continueCurrentOnStart && ::navigator.isInitialized && navigator.current != null) null else prefs.startVideo
         Thread {
-            val library = prefs.scanLibrary()
+            val t0 = SystemClock.elapsedRealtime()
             val vlc = try {
                 VlcEngine.get(app, VLC_OPTIONS)
             } catch (e: Throwable) {
                 Log.e(TAG, "LibVLC could not start", e)
                 null
             }
-            handler.post { onLoaded(generation, library, vlc) }
-        }.apply { isDaemon = true; name = "player-load" }.start()
+            Log.i(TAG, "Startup: LibVLC ${SystemClock.elapsedRealtime() - t0} ms")
+            handler.post { onEngineReady(generation, vlc) }
+        }.apply { isDaemon = true; name = "player-engine" }.start()
+        Thread {
+            val t0 = SystemClock.elapsedRealtime()
+            val library = prefs.scanLibrary()
+            Log.i(TAG, "Startup: library ${SystemClock.elapsedRealtime() - t0} ms (${library.size} videos)")
+            handler.post { onLibraryReady(generation, library) }
+        }.apply { isDaemon = true; name = "player-library" }.start()
     }
 
-    private fun onLoaded(generation: Int, library: VideoLibrary, vlc: LibVLC?) {
-        if (generation != loadGeneration || !started || isFinishing || isDestroyed) return
-        if (library.isEmpty) {
-            openSetup()
-            return
-        }
+    private fun isCurrentLoad(generation: Int) = generation == loadGeneration && started && !isFinishing && !isDestroyed
+
+    private fun onEngineReady(generation: Int, vlc: LibVLC?) {
+        if (!isCurrentLoad(generation)) return
+        engineReady = true
+        libVlc = vlc
         if (vlc == null) {
             bufferingView.visibility = View.GONE
             showToast(getString(R.string.nothing_playable))
             return
         }
-        libVlc = vlc
-        if (::navigator.isInitialized) navigator.updateLibrary(library) else navigator = PlaybackNavigator(library)
+        quickStart?.let {
+            Log.i(TAG, "Startup: opening the saved start video after ${SystemClock.elapsedRealtime() - loadStartedAt} ms")
+            play(it)
+        }
+        loadedLibrary?.let { onLoaded(it) }
+    }
 
+    private fun onLibraryReady(generation: Int, library: VideoLibrary) {
+        if (!isCurrentLoad(generation)) return
+        loadedLibrary = library
+        if (engineReady) onLoaded(library)
+    }
+
+    /** Runs once both LibVLC and the library are in. */
+    private fun onLoaded(library: VideoLibrary) {
+        loadedLibrary = null
+        if (library.isEmpty) {
+            prefs.startVideo = null
+            openSetup()
+            return
+        }
+        if (libVlc == null) return
+        if (::navigator.isInitialized) navigator.updateLibrary(library) else navigator = PlaybackNavigator(library)
         refreshNetworkSourcesInBackground()
-        val video = if (continueCurrentOnStart && navigator.current != null) navigator.current else navigator.start()
+
+        val quick = quickStart
+        quickStart = null
+        val waiting = eventBeforeLoad
+        eventBeforeLoad = null
+        if (quick != null && navigator.restore(quick.id, PlaybackMode.SHUFFLE) != null) {
+            // The saved video is already on screen; the navigator now knows it.
+            showOverlay()
+            when (waiting) {
+                MediaPlayer.Event.EndReached -> onVideoEnded()
+                MediaPlayer.Event.EncounteredError -> onVideoFailed()
+                else -> if (player?.isPlaying == true) schedulePreloads(PRELOAD_AFTER_START_MS)
+            }
+        } else {
+            // Nothing saved, the saved video is gone, or the activity came back from the manage screen.
+            val video = if (quick == null && continueCurrentOnStart && navigator.current != null) navigator.current else navigator.start()
+            video?.let(::play)
+        }
         continueCurrentOnStart = false
-        video?.let(::play)
+        saveNextStartVideo(library)
+    }
+
+    /** A random video, not the one on screen, to open at once next time the app starts. */
+    private fun saveNextStartVideo(library: VideoLibrary) {
+        val current = navigator.current?.id
+        val choices = library.videos.filter { it.id != current }.ifEmpty { library.videos }
+        prefs.startVideo = choices.random()
     }
 
     private fun openSetup() {
@@ -268,6 +334,10 @@ class PlayerActivity : Activity() {
                     MediaPlayer.Event.Playing -> {
                         consecutiveErrors = 0
                         bufferingView.visibility = View.GONE
+                        if (loadStartedAt > 0) {
+                            Log.i(TAG, "Startup: first video playing after ${SystemClock.elapsedRealtime() - loadStartedAt} ms")
+                            loadStartedAt = 0
+                        }
                         // Loading can finish after a lock overlay has already taken focus.
                         if (!hasWindowFocus()) pauseForFocusLoss()
                         // The video on screen has started: now prepare the next ones.
@@ -491,6 +561,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun onVideoEnded() {
+        if (!::navigator.isInitialized) { eventBeforeLoad = MediaPlayer.Event.EndReached; return }
         // A switch is already on its way; the old video ending changes nothing.
         if (pendingPlay != null) return
         playingVideo?.let { positions.remove(it.id) }
@@ -498,12 +569,13 @@ class PlayerActivity : Activity() {
     }
 
     private fun onVideoFailed() {
+        if (!::navigator.isInitialized) { eventBeforeLoad = MediaPlayer.Event.EncounteredError; return }
         // A switch is already on its way; the old video failing changes nothing.
         if (pendingPlay != null) return
         // LibVLC's native SMB client couldn't open this share: use the loopback server for it from
         // now on, and retry the same video that way before counting it as broken.
         val direct = playingDirectSource
-        val current = navigator.current
+        val current = playingVideo ?: navigator.current
         if (direct != null && current != null) {
             Log.w(TAG, "Native SMB playback failed; streaming this share through the app instead")
             directSmbFailed += direct
@@ -551,8 +623,8 @@ class PlayerActivity : Activity() {
     // ---- remote control ----
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // Until the background load has created the player, the navigator may not exist yet.
-        if (player == null) return super.onKeyDown(keyCode, event)
+        // Until the background load is done, the player or the navigator may not exist yet.
+        if (player == null || !::navigator.isInitialized) return super.onKeyDown(keyCode, event)
         val firstPress = event.repeatCount == 0
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
@@ -611,7 +683,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
-        if (player == null) return super.onKeyLongPress(keyCode, event)
+        if (player == null || !::navigator.isInitialized) return super.onKeyLongPress(keyCode, event)
         if (isCenterKey(keyCode)) {
             openManageScreen()
             return true
@@ -620,7 +692,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (player == null) return super.onKeyUp(keyCode, event)
+        if (player == null || !::navigator.isInitialized) return super.onKeyUp(keyCode, event)
         if (isCenterKey(keyCode)) {
             val wasLongPress = (event.flags and KeyEvent.FLAG_CANCELED_LONG_PRESS) != 0
             if (event.isTracking && !event.isCanceled && !wasLongPress) togglePause()
@@ -635,6 +707,7 @@ class PlayerActivity : Activity() {
     // ---- on-screen info ----
 
     private fun showOverlay() {
+        if (!::navigator.isInitialized) return
         val video = navigator.current ?: return
         val series = navigator.mode == PlaybackMode.SERIES
         modeText.setText(if (series) R.string.mode_series else R.string.mode_shuffle)

@@ -174,7 +174,17 @@ If the device refuses an APK with "App not installed", try the other ARM build, 
    adb install -r app-armeabi-v7a-debug.apk
    ```
 
-3. **Kid Local TV** appears in the TV's apps row.
+3. Optional, but it makes the app start much faster on slow TVs:
+
+   ```bash
+   adb shell cmd package compile -m speed -f com.kidlocaltv
+   ```
+
+   Android compiles a sideloaded app only later, when the TV is idle. Until then the app runs in the
+   interpreter: on a 1 GB Skyworth TV, loading a 2,400-video library took 3 s instead of 0.3 s. Run it
+   again after every update.
+
+4. **Kid Local TV** appears in the TV's apps row.
 
 Alternatively, copy the APK to a USB stick or cloud drive and open it with a file manager app on the TV.
 
