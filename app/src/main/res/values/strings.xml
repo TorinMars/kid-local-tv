@@ -113,6 +113,7 @@
     <string name="parent_break_note">A pause as long as a break counts as one.</string>
     <string name="parent_bedtime_note">No videos between these times, every day.</string>
     <string name="parent_give_short">＋ 15 min now</string>
+    <string name="parent_reset_today">↺ Reset today</string>
     <string name="parent_sources">Network folders</string>
     <string name="parent_keys">▲ ▼ move   ·   ◀ ▶ change a value   ·   OK select</string>
 </resources>

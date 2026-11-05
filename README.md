@@ -168,7 +168,7 @@ The **Parent settings** screen shows:
 
 - at the top, a status chip: *Videos are allowed now* (green), *Break until …* (orange), *Today's time is used up* (red) or *Bedtime until …* (blue);
 - **Today**: the minutes watched, with a bar towards the daily limit (red when it is used up);
-- a row of buttons: **＋ 15 min now**, **Manage videos**, **Network folders**, **Change PIN**, **Back to videos** (◀ ▶ move between them);
+- a row of buttons: **＋ 15 min now**, **↺ Reset today**, **Manage videos**, **Network folders**, **Change PIN**, **Back to videos** (◀ ▶ move between them);
 - two cards, **Watch time and breaks** and **Bedtime**: ▲ ▼ pick a setting, ◀ ▶ change its value. Every change is saved at once. Settings that do nothing right now (break length with breaks off, bedtime times with bedtime off) are dimmed.
 
 | Setting | What it does |
@@ -177,6 +177,7 @@ The **Parent settings** screen shows:
 | Break after watching / Break length | For example a 10 min break after 30 min. A countdown shows when videos come back. A pause at least one break long (video paused, TV off) counts as the break. |
 | Bedtime, starts / ends | For example 20:30 to 07:00. The train sleeps under the moon until bedtime ends. |
 | ＋ 15 min now | Lets the child watch 15 more minutes, whatever the rules say (it also ends a break). That time counts for the day, but not towards the next break. |
+| ↺ Reset today | Starts today over: 0 minutes watched, and no break due or running. Bedtime still applies. |
 | Change PIN | Choose a new PIN. |
 
 While a rest screen is up, the remote does nothing except **hold OK / Menu** for the parent. A forgotten PIN is reset by clearing the app's data (*Settings → Apps → Kid Local TV → Clear data*); that also removes the saved shares and positions.

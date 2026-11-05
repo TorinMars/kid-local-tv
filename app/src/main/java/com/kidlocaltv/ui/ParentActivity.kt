@@ -244,6 +244,10 @@ class ParentActivity : Activity() {
             kids.giveTime(GIVE_MINUTES)
             refreshAll()
         }
+        actionButton(actions, getString(R.string.parent_reset_today)) {
+            kids.resetToday()
+            refreshAll()
+        }
         actionButton(actions, getString(R.string.parent_manage)) {
             startActivity(SetupActivity.intent(this, manage = true))
             finish()

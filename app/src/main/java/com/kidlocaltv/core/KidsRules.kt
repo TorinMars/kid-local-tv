@@ -95,6 +95,10 @@ object KidsGuard {
         return s.copy(parentUntil = from + minutes * MINUTE, breakUntil = 0, sinceBreakMs = 0)
     }
 
+    /** A parent starts today over: no minutes watched, no break due or running. Bedtime still applies. */
+    fun resetToday(state: WatchState, day: String): WatchState =
+        forDay(state, day).copy(watchedTodayMs = 0, sinceBreakMs = 0, breakUntil = 0)
+
     fun inBedtime(rules: KidsRules, minuteOfDay: Int): Boolean {
         val start = rules.bedtimeStartMin
         val end = rules.bedtimeEndMin

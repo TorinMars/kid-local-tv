@@ -72,6 +72,10 @@ class KidsStore(context: Context) {
         state = KidsGuard.giveTime(state, minutes, now, dayOf(now))
     }
 
+    fun resetToday(now: Long = System.currentTimeMillis()) {
+        state = KidsGuard.resetToday(state, dayOf(now))
+    }
+
     fun watchedTodayMs(now: Long = System.currentTimeMillis()): Long =
         KidsGuard.forDay(state, dayOf(now)).watchedTodayMs
 

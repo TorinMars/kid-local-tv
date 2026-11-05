@@ -92,6 +92,19 @@ class KidsGuardTest {
     }
 
     @Test
+    fun resetTodayClearsTimeAndBreakButNotBedtime() {
+        val rules = KidsRules(dailyLimitMin = 30, breakEveryMin = 20, breakLengthMin = 5, bedtimeOn = true)
+        var s = watch(rules, WatchState(), 30, t0)
+        val now = t0 + 30 * MINUTE
+        assertEquals(Verdict.TimeUp, KidsGuard.check(rules, s, now, day, noon))
+        s = KidsGuard.resetToday(s, day)
+        assertEquals(0L, s.watchedTodayMs)
+        assertEquals(0L, s.sinceBreakMs)
+        assertEquals(Verdict.Allowed, KidsGuard.check(rules, s, now, day, noon))
+        assertEquals(Verdict.Bedtime(rules.bedtimeEndMin), KidsGuard.check(rules, s, now, day, 22 * 60))
+    }
+
+    @Test
     fun breakNeverLongerThanOneBreakAfterClockChange() {
         val rules = KidsRules(breakEveryMin = 20, breakLengthMin = 5)
         val s = WatchState(day = day, breakUntil = t0 + 600 * MINUTE)
