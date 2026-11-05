@@ -2,7 +2,7 @@
 
 A simple, kid-friendly video player for **Android TV**. It plays videos from shared folders on your home network (NAS, Windows PC or Mac) **without copying them to the TV**, so it works fine on TVs with little storage. You can also upload videos to the TV itself.
 
-Once it's set up, the app opens straight into full-screen playback of a random video. The remote's arrow keys are the only controls there are.
+Everything is set up on the TV with the remote, including the network folder; a phone is optional. Once it's set up, the app opens straight into full-screen playback of a random video in about a second. The remote's arrow keys are the only controls there are, and a parent PIN protects the settings: daily watch time, breaks and bedtime.
 
 <p align="center"><img src="docs/images/tv-shuffle.png" width="820" alt="Kid Local TV playing a video in shuffle mode"></p>
 
@@ -14,10 +14,10 @@ Once it's set up, the app opens straight into full-screen playback of a random v
 
 | | |
 |---|---|
-| 🛠 **One-time setup** | On first launch the TV shows an address and QR code. Open it on any phone or computer on the same Wi-Fi. |
-| 📡 **Network folders (SMB)** | Add `smb://nas/Videos` (or `\\nas\Videos`) and the TV **streams** from it. Nothing is copied, so the TV only stores a tiny file list. |
+| 🛠 **One-time setup on the TV** | Type the network folder with the remote and the TV's keyboard. Or open the address / QR code the TV shows on a phone or computer. |
+| 📡 **Network folders (SMB)** | Add `192.168.1.20/Videos` (or `smb://nas/Videos`, `\\nas\Videos`) and the TV **streams** from it. Nothing is copied, so the TV only stores a tiny file list. |
 | 🎞 **Plays almost anything** | [LibVLC](https://www.videolan.org/vlc/libvlc.html) decodes MP4, MKV, AVI/DivX/Xvid, WMV, MPEG-2, HEVC, VP9, AV1, AC3/DTS audio and more, using hardware decoding when the TV supports the codec. |
-| ▶️ **Instant playback** | Every launch after setup goes straight to full screen and starts a random video. |
+| ▶️ **Instant playback** | Every launch after setup goes straight to full screen and plays a random video after about 1 s. ▲/▼ switch in 0.2–0.4 s, because the next videos are already loaded. |
 | 🔀 **Shuffle mode** | ▲ or ▼ plays another random video from the *whole* library, whatever folder or file order. |
 | 📺 **Series mode** | ▶ locks onto the current video's folder. ▲ / ▼ then step through its episodes in order. |
 | 🔖 **Resume** | Each time ▲/▼ switches videos, the spot in the video you left is saved. That video resumes there next time. |
@@ -32,11 +32,26 @@ Once it's set up, the app opens straight into full-screen playback of a random v
 
 ### 1. First launch: set up a video source
 
-When the library is empty, the app opens the setup screen. The TV starts a small web server on port `8080` and shows its address and a QR code.
+When the library is empty, the app opens the setup screen. It offers two ways to add videos:
+
+- **Add a network folder on the TV** (the first button): everything with the remote, see below.
+- **Or use a phone or computer**: the TV starts a small web server on port `8080` and shows its address and a QR code (section 2). This way is also for uploading files to the TV.
 
 <p align="center"><img src="docs/images/tv-setup.png" width="820" alt="Setup screen with the address and QR code"></p>
 
-The count updates live as videos are found. Once there's at least one video, **Start watching** becomes available. From then on the app skips this screen.
+The count updates live as videos are found. Once there's at least one video, **Start watching** becomes available. From then on the app skips this screen. Later, the same screen is under **Parent settings → Manage videos**.
+
+#### Network folders on the TV
+
+The **Network folders** screen (from the setup screen, or **Parent settings → Network folders**) has a form on the left and the folders already added on the right.
+
+1. Press OK on a field to type with the TV's on-screen keyboard; ▲ ▼ move between the fields.
+2. **Address**: `192.168.1.20/Videos` is enough (`smb://` is added). `smb://nas/Videos`, `\\nas\Videos` and the other forms in the table below work too.
+3. **Username** and **Password**: leave the username empty for a guest share.
+4. **Series name** (optional): leave it empty and each folder in the share becomes a series.
+5. **Connect and add**: the TV logs in and lists the videos at once, then shows *Added: N videos in M folders*. If it can't connect, it shows why (for example a wrong password), keeps what you typed so you can fix it, and doesn't save the folder.
+
+Each added folder shows its address, its login, a green / red / orange dot (OK / failed / scanning) and its video count, with **Rescan** and **Remove** (press Remove twice). Removing a folder never touches the share.
 
 ### 2. Add videos from a phone or computer
 
@@ -58,10 +73,10 @@ Paste a shared folder, and add a login if the share needs one. All of these form
 
 <p align="center"><img src="docs/images/diagram-network.png" width="900" alt="Network folders stream: the NAS share is read on demand through a loopback stream server into LibVLC"></p>
 
-- **Nothing is copied.** The TV saves the link, the login and a small list of file names (a few KB). Each video is read from the share while it plays, and seeking and resume work as usual.
+- **Nothing is copied.** The TV saves the link, the login and a small list of file names (a few KB). Each video is read from the share while it plays, and seeking and resume work as usual. LibVLC opens the share with its own native SMB client, which needs little CPU; the app's loopback stream server (smbj) is the fallback for shares that client can't open.
 - **Fast start.** The app starts from the cached file list, so launch is instant. It then re-checks each share in the background (at most every 10 minutes) to pick up new episodes.
 - **Share switched off?** Its videos are skipped, and anything else in the library keeps playing. If a whole series is offline, playback returns to shuffle mode.
-- **Rescan / Remove** buttons are on the web page. Removing a network folder never touches the share.
+- **Rescan / Remove** buttons are on the TV's Network folders screen and on the web page. Removing a network folder never touches the share.
 - Works with SMB 2 and 3 shares: Windows, macOS file sharing, Samba, Synology, QNAP, TrueNAS and others. Guest shares need no login. NAS housekeeping folders such as `@eaDir` and `#recycle`, and hidden files, are ignored.
 - The login is stored in the app's private storage on the TV, so the app can play the videos later. Re-adding a share with a wrong password keeps the previous, working login.
 
@@ -76,6 +91,10 @@ Paste a shared folder, and add a login if the share needs one. All of these form
 ### 3. Every launch after: straight to playback
 
 The app opens full screen and starts a random video in **shuffle mode**. A small card shows the current mode, the title, and where it sits in its folder, then fades after a few seconds.
+
+- **About 1 s to the first picture.** Each time the library loads, the app picks the video for the next start and saves it. On launch it plays that video at once, while the library loads in the background (▲/▼ work as soon as it's in, after about half a second).
+- **Train loading screen.** While a video opens, a full-screen train with a bear driver rolls through the hills instead of a black screen. It fades out when the video starts.
+- **Instant ▲/▼.** While a video plays, the app opens the next videos in the background, muted and paused: the next 5 random picks in shuffle mode, the next 3 and previous 2 episodes in series mode. Switching to one takes 0.2–0.4 s. A video that isn't ready yet starts loading only once the presses stop, so a fast run of ▲/▼ stays smooth. Preloading pauses when the TV is low on memory.
 
 <p align="center"><img src="docs/images/diagram-modes.png" width="900" alt="Shuffle mode jumps across the whole library; series mode steps through one folder"></p>
 
@@ -145,12 +164,19 @@ Software decoding of high-resolution HEVC or AV1 can be too slow on low-end TV b
 
 Hold OK (or press Menu) and enter the parent PIN. The first time, you choose the 4-digit PIN there. Enter digits with the number keys, or with ▲ ▼ (change the number) and ◀ ▶ (move). After 5 wrong tries the PIN screen waits 60 s.
 
+The **Parent settings** screen shows:
+
+- at the top, a status chip: *Videos are allowed now* (green), *Break until …* (orange), *Today's time is used up* (red) or *Bedtime until …* (blue);
+- **Today**: the minutes watched, with a bar towards the daily limit (red when it is used up);
+- a row of buttons: **＋ 15 min now**, **Manage videos**, **Network folders**, **Change PIN**, **Back to videos** (◀ ▶ move between them);
+- two cards, **Watch time and breaks** and **Bedtime**: ▲ ▼ pick a setting, ◀ ▶ change its value. Every change is saved at once. Settings that do nothing right now (break length with breaks off, bedtime times with bedtime off) are dimmed.
+
 | Setting | What it does |
 |---|---|
 | Daily watch time | Off, or 15 min to 4 h. Only time a video is really playing counts. When it is used up, the train goes to sleep until the next day. |
 | Break after watching / Break length | For example a 10 min break after 30 min. A countdown shows when videos come back. A pause at least one break long (video paused, TV off) counts as the break. |
 | Bedtime, starts / ends | For example 20:30 to 07:00. The train sleeps under the moon until bedtime ends. |
-| Give 15 more minutes now | Lets the child watch 15 more minutes, whatever the rules say (it also ends a break). That time counts for the day, but not towards the next break. |
+| ＋ 15 min now | Lets the child watch 15 more minutes, whatever the rules say (it also ends a break). That time counts for the day, but not towards the next break. |
 | Change PIN | Choose a new PIN. |
 
 While a rest screen is up, the remote does nothing except **hold OK / Menu** for the parent. A forgotten PIN is reset by clearing the app's data (*Settings → Apps → Kid Local TV → Clear data*); that also removes the saved shares and positions.
@@ -242,14 +268,18 @@ app/src/main/java/com/kidlocaltv/
 │   ├── NetworkSources.kt    # saved SMB shares + cached file lists, background rescans
 │   ├── SmbStreamServer.kt   # loopback HTTP server: streams SMB files with Range/seek support
 │   ├── SmbSource.kt         # smbj wrapper: login, recursive listing, random-access reads
-│   ├── SmbLink.kt           # parses smb://, \\server\share and //server/share links
+│   ├── SmbLink.kt           # parses smb://, \\server\share and //server/share links (and short TV input)
+│   ├── SmbDirect.kt         # smb:// URL + login options for LibVLC's native SMB client
+│   ├── PrefetchInputStream.kt # read-ahead for the loopback stream server
 │   └── NetworkInfo.kt       # TV's LAN address
 ├── data/AppPrefs.kt         # setup flag, library location, saved positions, next start video
 ├── data/KidsStore.kt        # parental rules, watch time, PIN (salted hash)
 └── ui/
     ├── PlayerActivity.kt    # launcher, LibVLC full-screen player, remote handling
     ├── SetupActivity.kt     # first run + "Manage videos"
+    ├── SourcesActivity.kt   # add / rescan / remove network folders on the TV
     ├── ParentActivity.kt    # PIN, parental settings
+    ├── VlcEngine.kt         # one LibVLC for the process; players released in the background
     ├── TrainLoadingView.kt  # the train scene: loading, break, night
     ├── Preloader.kt         # keeps the next videos ready for instant Up/Down
     └── QrCode.kt

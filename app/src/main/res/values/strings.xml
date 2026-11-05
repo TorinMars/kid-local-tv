@@ -78,7 +78,7 @@
     <string name="setup_add_on_tv">Add a network folder on the TV</string>
     <string name="setup_or_phone">Or use a phone or computer:</string>
     <string name="sources_title">Network folders (SMB)</string>
-    <string name="sources_intro">Videos stream from a shared folder on a computer or NAS. Nothing is copied to the TV. Press OK on a field to type with the on-screen keyboard.</string>
+    <string name="sources_intro">Videos stream from a shared folder on a computer or NAS. Nothing is copied to the TV.</string>
     <string name="sources_address">Address</string>
     <string name="sources_address_hint">192.168.1.20/Videos  or  smb://nas/Videos</string>
     <string name="sources_user">Username (empty for guest)</string>
@@ -90,12 +90,17 @@
     <string name="sources_added">Added: %1$d videos in %2$d folders</string>
     <string name="sources_failed">Couldn\'t add it: %1$s</string>
     <string name="sources_bad_address">Enter an address like 192.168.1.20/Videos</string>
-    <string name="sources_existing">Added folders</string>
+    <string name="sources_existing">📁  Added folders</string>
+    <string name="sources_add_title">＋  Add a folder</string>
+    <string name="sources_guest">Guest (no login)</string>
+    <string name="sources_summary">%1$d videos in %2$d folders</string>
+    <string name="sources_rescanned">Rescanned</string>
+    <string name="sources_remove_confirm">Press again to remove</string>
+    <string name="sources_keys">OK on a field opens the keyboard   ·   ▲ ▼ ◀ ▶ move</string>
     <string name="sources_none">No network folders yet.</string>
-    <string name="sources_item">%1$s\n%2$d videos · %3$s</string>
     <string name="sources_rescan">Rescan</string>
     <string name="sources_remove">Remove</string>
-    <string name="sources_done">Done</string>
+    <string name="sources_done">Back</string>
 
     <!-- Parent settings layout -->
     <string name="parent_subtitle">Changes are saved at once</string>
