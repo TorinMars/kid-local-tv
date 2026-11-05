@@ -73,4 +73,18 @@ class SmbLinkTest {
     fun rejectsLinkWithoutShare() {
         SmbLink.parse("smb://nas/")
     }
+
+    @Test
+    fun typedOnTvAddsTheScheme() {
+        assertEquals("smb://192.168.1.20/Videos", SmbLink.typedOnTv(" 192.168.1.20/Videos "))
+        assertEquals("smb://nas/Videos/Kids", SmbLink.typedOnTv("nas\\Videos\\Kids"))
+        assertEquals("SMB://nas/Videos", SmbLink.typedOnTv("SMB://nas/Videos"))
+        assertEquals("\\\\nas\\Videos", SmbLink.typedOnTv("\\\\nas\\Videos"))
+        assertEquals("//nas/Videos", SmbLink.typedOnTv("//nas/Videos"))
+        assertEquals("", SmbLink.typedOnTv("  "))
+        val link = SmbLink.parse(SmbLink.typedOnTv("192.168.1.20/Videos/Kids"))
+        assertEquals("192.168.1.20", link.host)
+        assertEquals("Videos", link.share)
+        assertEquals("Kids", link.path)
+    }
 }

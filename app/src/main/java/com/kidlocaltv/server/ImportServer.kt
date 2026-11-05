@@ -216,11 +216,8 @@ class ImportServer(
         val previous = sources.findSameLocation(link)
         val source = sources.add(link, sanitizeFolder(form["folder"]))
         scanExecutor.execute {
-            val ok = sources.scan(source.id)
             // Re-adding a working share with a wrong login shouldn't break it: keep the old login.
-            if (!ok && previous != null && previous.link != source.link && sources.entries(source.id).isNotEmpty()) {
-                sources.restore(previous, "kept the previous login")
-            }
+            sources.scanAdded(source, previous)
             onLibraryChanged()
         }
         return json(Response.Status.OK, """{"ok":true,"id":${quote(source.id)}}""")

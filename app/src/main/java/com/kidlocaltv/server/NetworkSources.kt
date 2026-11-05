@@ -139,6 +139,19 @@ class NetworkSources(private val dir: File) {
         }
     }
 
+    /**
+     * Scans a share just added with [add]. If that fails and it replaced a working share
+     * ([previous], same location, other login), the old login is put back so the share keeps
+     * working. Blocks while it connects; returns true when the scan worked.
+     */
+    fun scanAdded(source: Source, previous: Source?): Boolean {
+        val ok = scan(source.id)
+        if (!ok && previous != null && previous.link != source.link && entries(source.id).isNotEmpty()) {
+            restore(previous, "kept the previous login")
+        }
+        return ok
+    }
+
     /** Re-scans every share whose index is older than [maxAgeMs]. Returns true if anything changed. */
     fun scanStale(maxAgeMs: Long): Boolean {
         val now = System.currentTimeMillis()

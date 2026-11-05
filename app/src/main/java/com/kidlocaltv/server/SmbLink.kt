@@ -51,6 +51,19 @@ data class SmbLink(
                 (s.startsWith("//") && !s.startsWith("///"))
         }
 
+        /**
+         * Typing on a TV is slow, so "192.168.1.20/Videos" is enough there: smb:// is added.
+         * `smb://…`, `\\server\share` and `//server/share` are kept as they are.
+         */
+        fun typedOnTv(raw: String): String {
+            val s = raw.trim()
+            return when {
+                s.isEmpty() -> s
+                s.startsWith("smb://", ignoreCase = true) || s.startsWith("\\\\") || s.startsWith("//") -> s
+                else -> "smb://" + s.replace('\\', '/')
+            }
+        }
+
         /** @throws IllegalArgumentException with a user-readable message if the link is malformed. */
         fun parse(raw: String): SmbLink {
             var s = raw.trim()

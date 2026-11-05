@@ -32,4 +32,82 @@
     <string name="cannot_play">Couldn\'t play \"%1$s\" – skipping</string>
     <string name="nothing_playable">None of the videos could be played</string>
     <string name="stream_server_failed">Network folders are unavailable right now</string>
+
+    <!-- Parent screen -->
+    <string name="pin_enter">Parent PIN</string>
+    <string name="pin_create">Choose a 4-digit parent PIN</string>
+    <string name="pin_confirm">Enter the same PIN again</string>
+    <string name="pin_wrong">Wrong PIN. Try again.</string>
+    <string name="pin_mismatch">The two PINs were different. Start again.</string>
+    <string name="pin_locked">Too many tries. Wait %1$d seconds.</string>
+    <string name="pin_hint">▲ ▼ change the number · ◀ ▶ move · OK next · or use the number keys</string>
+    <string name="pin_create_note">The PIN protects these settings and the manage screen. Forgot it? Clear the app\'s data in the TV settings.</string>
+    <string name="parent_title">Parent settings</string>
+    <string name="parent_manage">Manage videos</string>
+    <string name="parent_daily">Daily watch time</string>
+    <string name="parent_break_every">Break after watching</string>
+    <string name="parent_break_length">Break length</string>
+    <string name="parent_bedtime">Bedtime</string>
+    <string name="parent_bedtime_start">Bedtime starts</string>
+    <string name="parent_bedtime_end">Bedtime ends</string>
+    <string name="parent_give_time">Give 15 more minutes now</string>
+    <string name="parent_change_pin">Change PIN</string>
+    <string name="parent_back">Back to videos</string>
+    <string name="parent_off">Off</string>
+    <string name="parent_on">On</string>
+    <string name="parent_minutes">%1$d min</string>
+    <string name="parent_row">%1$s:   ◀  %2$s  ▶</string>
+    <string name="parent_watched">Watched today: %1$d min</string>
+    <string name="parent_extra_until">Extra time until %1$s</string>
+    <string name="parent_now_allowed">Videos are allowed now</string>
+    <string name="parent_now_break">Break until %1$s</string>
+    <string name="parent_now_time_up">Today\'s time is used up</string>
+    <string name="parent_now_bedtime">Bedtime until %1$s</string>
+    <string name="parent_help">◀ ▶ change a setting · changes are saved at once</string>
+
+    <!-- Rest screens -->
+    <string name="rest_break_title">Break time! The train is resting 🚂</string>
+    <string name="rest_break_detail">Videos come back in %1$s. Stretch, jump, drink some water!</string>
+    <string name="rest_time_up_title">That\'s all the videos for today</string>
+    <string name="rest_time_up_detail">The train is going to sleep. See you tomorrow!</string>
+    <string name="rest_bedtime_title">Bedtime! 🌙</string>
+    <string name="rest_bedtime_detail">The train is sleeping. Videos come back at %1$s.</string>
+    <string name="rest_parent_hint">Parent: hold OK for settings</string>
+
+    <!-- Network folders, set up on the TV -->
+    <string name="setup_add_on_tv">Add a network folder on the TV</string>
+    <string name="setup_or_phone">Or use a phone or computer:</string>
+    <string name="sources_title">Network folders (SMB)</string>
+    <string name="sources_intro">Videos stream from a shared folder on a computer or NAS. Nothing is copied to the TV. Press OK on a field to type with the on-screen keyboard.</string>
+    <string name="sources_address">Address</string>
+    <string name="sources_address_hint">192.168.1.20/Videos  or  smb://nas/Videos</string>
+    <string name="sources_user">Username (empty for guest)</string>
+    <string name="sources_password">Password</string>
+    <string name="sources_folder">Series name (optional)</string>
+    <string name="sources_folder_hint">Empty: each folder in the share is a series</string>
+    <string name="sources_add">Connect and add</string>
+    <string name="sources_connecting">Connecting to %1$s…</string>
+    <string name="sources_added">Added: %1$d videos in %2$d folders</string>
+    <string name="sources_failed">Couldn\'t add it: %1$s</string>
+    <string name="sources_bad_address">Enter an address like 192.168.1.20/Videos</string>
+    <string name="sources_existing">Added folders</string>
+    <string name="sources_none">No network folders yet.</string>
+    <string name="sources_item">%1$s\n%2$d videos · %3$s</string>
+    <string name="sources_rescan">Rescan</string>
+    <string name="sources_remove">Remove</string>
+    <string name="sources_done">Done</string>
+
+    <!-- Parent settings layout -->
+    <string name="parent_subtitle">Changes are saved at once</string>
+    <string name="parent_today">Today</string>
+    <string name="parent_watched_big">%1$d min watched</string>
+    <string name="parent_of_limit">of %1$d min</string>
+    <string name="parent_no_limit">No daily limit</string>
+    <string name="parent_card_time">⏱  Watch time and breaks</string>
+    <string name="parent_card_bedtime">🌙  Bedtime</string>
+    <string name="parent_break_note">A pause as long as a break counts as one.</string>
+    <string name="parent_bedtime_note">No videos between these times, every day.</string>
+    <string name="parent_give_short">＋ 15 min now</string>
+    <string name="parent_sources">Network folders</string>
+    <string name="parent_keys">▲ ▼ move   ·   ◀ ▶ change a value   ·   OK select</string>
 </resources>

@@ -21,6 +21,8 @@ Once it's set up, the app opens straight into full-screen playback of a random v
 | 🔀 **Shuffle mode** | ▲ or ▼ plays another random video from the *whole* library, whatever folder or file order. |
 | 📺 **Series mode** | ▶ locks onto the current video's folder. ▲ / ▼ then step through its episodes in order. |
 | 🔖 **Resume** | Each time ▲/▼ switches videos, the spot in the video you left is saved. That video resumes there next time. |
+| 👪 **Parental controls** | Daily watch time, breaks, and bedtime hours, set on the TV behind a parent PIN. When time is up, a resting train replaces the video. |
+| 🚂 **Train loading screen** | While a video opens, a full-screen train rolls by instead of a black screen. |
 
 <p align="center"><img src="docs/images/diagram-flow.png" width="900" alt="Setup flow: first launch shows an address, add videos from a phone, later launches play immediately"></p>
 
@@ -100,7 +102,7 @@ Press **▶** while something is playing to switch to series mode for that video
 - Every ▲ / ▼ switch saves the current position of the video **being left**.
 - When that video plays again, in either mode, it starts from the saved spot. This works for network videos too.
 - Positions within the first 5 s or the last 15 s aren't kept, so a finished video starts fresh.
-- Leaving the app (Home or Back) also saves the current spot.
+- Leaving the app (Home) also saves the current spot.
 
 ---
 
@@ -128,13 +130,32 @@ Software decoding of high-resolution HEVC or AV1 can be too slow on low-end TV b
 | ▶ Right | Switch to series mode | (stays in series mode) |
 | ◀ Left | (stays in shuffle mode) | Switch to shuffle mode |
 | OK / Play-Pause | Pause / resume | Pause / resume |
-| **Hold OK** or Menu | Open **Manage videos** | Open **Manage videos** |
+| **Hold OK** or Menu | Open **Parent settings** (PIN) | Open **Parent settings** (PIN) |
+| Back | Does nothing (this is the kids' home screen) | Does nothing |
 | Channel ▲▼, ⏮ ⏭ | Same as ▲▼ | Same as ▲▼ |
 | ⏪ ⏩ | Seek −/+ 10 s | Seek −/+ 10 s |
 
 <p align="center"><img src="docs/images/tv-paused.png" width="640" alt="Paused playback"></p>
 
-**Manage videos** (hold OK) reopens the setup screen and its web page, so you can add network folders or upload videos. Press *Back to watching* to carry on with the same video.
+**Parent settings** (hold OK, then the PIN) has **Manage videos**, which reopens the setup screen and its web page, so you can add network folders or upload videos. Press *Back to watching* to carry on with the same video.
+
+---
+
+## Parental controls
+
+Hold OK (or press Menu) and enter the parent PIN. The first time, you choose the 4-digit PIN there. Enter digits with the number keys, or with ▲ ▼ (change the number) and ◀ ▶ (move). After 5 wrong tries the PIN screen waits 60 s.
+
+| Setting | What it does |
+|---|---|
+| Daily watch time | Off, or 15 min to 4 h. Only time a video is really playing counts. When it is used up, the train goes to sleep until the next day. |
+| Break after watching / Break length | For example a 10 min break after 30 min. A countdown shows when videos come back. A pause at least one break long (video paused, TV off) counts as the break. |
+| Bedtime, starts / ends | For example 20:30 to 07:00. The train sleeps under the moon until bedtime ends. |
+| Give 15 more minutes now | Lets the child watch 15 more minutes, whatever the rules say (it also ends a break). That time counts for the day, but not towards the next break. |
+| Change PIN | Choose a new PIN. |
+
+While a rest screen is up, the remote does nothing except **hold OK / Menu** for the parent. A forgotten PIN is reset by clearing the app's data (*Settings → Apps → Kid Local TV → Clear data*); that also removes the saved shares and positions.
+
+These rules only work inside the player. They don't stop someone from leaving it with the Home button; for that, set Kid Local TV as Home (below) or use the TV's own child lock.
 
 ---
 
@@ -214,6 +235,7 @@ app/src/main/java/com/kidlocaltv/
 │   ├── VideoLibrary.kt      # folder scan, grouping, natural sort, supported extensions
 │   ├── Video.kt             # a video: local file or network (SMB) location
 │   ├── NaturalOrder.kt
+│   ├── KidsRules.kt         # parental rules: daily limit, breaks, bedtime, parent's extra time
 │   └── ResumePolicy.kt      # when to keep / clear saved positions
 ├── server/                  # Pure JVM (no Android APIs), tested against real SMB servers
 │   ├── ImportServer.kt      # web page API: uploads, network folders, downloads, delete
@@ -222,10 +244,14 @@ app/src/main/java/com/kidlocaltv/
 │   ├── SmbSource.kt         # smbj wrapper: login, recursive listing, random-access reads
 │   ├── SmbLink.kt           # parses smb://, \\server\share and //server/share links
 │   └── NetworkInfo.kt       # TV's LAN address
-├── data/AppPrefs.kt         # setup flag, library location, saved positions
+├── data/AppPrefs.kt         # setup flag, library location, saved positions, next start video
+├── data/KidsStore.kt        # parental rules, watch time, PIN (salted hash)
 └── ui/
     ├── PlayerActivity.kt    # launcher, LibVLC full-screen player, remote handling
     ├── SetupActivity.kt     # first run + "Manage videos"
+    ├── ParentActivity.kt    # PIN, parental settings
+    ├── TrainLoadingView.kt  # the train scene: loading, break, night
+    ├── Preloader.kt         # keeps the next videos ready for instant Up/Down
     └── QrCode.kt
 app/src/main/assets/web/index.html   # the web page
 ```

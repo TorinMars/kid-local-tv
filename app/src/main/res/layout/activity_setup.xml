@@ -25,9 +25,25 @@
             android:textSize="34sp"
             android:textStyle="bold" />
 
+        <!-- First choice: type the network folder on the TV, no phone needed. -->
+        <Button
+            android:id="@+id/setup_add_on_tv"
+            style="@style/TvButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/setup_add_on_tv" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/setup_or_phone"
+            android:textColor="@color/muted"
+            android:textSize="18sp" />
+
         <TextView
             style="@style/SetupStep"
-            android:layout_marginTop="20dp"
             android:text="@string/setup_step1" />
 
         <TextView

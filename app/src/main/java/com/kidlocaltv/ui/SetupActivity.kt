@@ -22,8 +22,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Shown on first launch (and later via long-press OK / Menu on the player).
- * Runs the import web server and shows the address + QR code to open on a phone or computer.
+ * Shown on first launch (and later from the parent screen).
+ * Network folders are added right here on the TV ([SourcesActivity]); the import web server, with
+ * its address and QR code, is the other way, from a phone or computer (also for uploads).
  */
 class SetupActivity : Activity() {
 
@@ -70,6 +71,10 @@ class SetupActivity : Activity() {
         )
         doneButton.setText(if (isManageMode) R.string.back_to_watching else R.string.start_watching)
         doneButton.setOnClickListener { finishSetup() }
+        findViewById<Button>(R.id.setup_add_on_tv).apply {
+            setOnClickListener { startActivity(SourcesActivity.intent(this@SetupActivity)) }
+            requestFocus()
+        }
     }
 
     override fun onStart() {

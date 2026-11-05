@@ -19,7 +19,12 @@ import com.kidlocaltv.core.ResumePolicy
 import com.kidlocaltv.core.Video
 import com.kidlocaltv.core.VideoLibrary
 import com.kidlocaltv.core.VideoLocation
+import com.kidlocaltv.core.KidsGuard
+import com.kidlocaltv.core.KidsRules
+import com.kidlocaltv.core.Verdict
+import com.kidlocaltv.core.WatchState
 import com.kidlocaltv.data.AppPrefs
+import com.kidlocaltv.data.KidsStore
 import com.kidlocaltv.data.PrefsPositionStore
 import com.kidlocaltv.server.SmbDirect
 import com.kidlocaltv.server.SmbStreamServer
@@ -37,7 +42,11 @@ import org.videolan.libvlc.util.VLCVideoLayout
  *  - Right              switch to series mode for the current video's folder
  *  - Left               switch back to shuffle mode
  *  - OK / Play-Pause    pause or resume
- *  - Hold OK, or Menu   manage videos (import screen)
+ *  - Hold OK, or Menu   parent screen (PIN): limits, bedtime, manage videos
+ *  - Back               does nothing: the player is the kids' home screen
+ *
+ * Parental rules ([KidsGuard]): watch time is counted while a video plays. When a break, bedtime
+ * or the daily limit applies, the player stops and shows the resting train until it is over.
  *
  * The position of the video being left is saved on every Up/Down switch (and when the app stops),
  * and that video resumes from there the next time it comes up.
@@ -56,6 +65,25 @@ class PlayerActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
     private lateinit var bufferingView: View
     private lateinit var loadingScreen: View
+    private lateinit var restScreen: View
+    private lateinit var restTrain: TrainLoadingView
+    private lateinit var restTitle: TextView
+    private lateinit var restDetail: TextView
+
+    private lateinit var kids: KidsStore
+    /** In memory while started; loaded in onStart (the parent screen may have changed them) and saved often. */
+    private var rules = KidsRules()
+    private var watch = WatchState()
+    /** The rest screen is up: nothing plays until the rules allow it again. */
+    private var resting = false
+    private var lastTickAt = 0L
+    private var lastSavedAt = 0L
+    private val guardTick = object : Runnable {
+        override fun run() {
+            checkRules()
+            handler.postDelayed(this, GUARD_TICK_MS)
+        }
+    }
     private lateinit var overlay: View
     private lateinit var modeText: TextView
     private lateinit var titleText: TextView
@@ -115,6 +143,7 @@ class PlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = AppPrefs(this)
         positions = PrefsPositionStore(this)
+        kids = KidsStore(this)
 
         if (!prefs.setupComplete) {
             openSetup()
@@ -126,6 +155,10 @@ class PlayerActivity : Activity() {
         videoLayout = findViewById(R.id.video_layout)
         bufferingView = findViewById(R.id.buffering)
         loadingScreen = findViewById(R.id.loading_screen)
+        restScreen = findViewById(R.id.rest_screen)
+        restTrain = findViewById(R.id.rest_train)
+        restTitle = findViewById(R.id.rest_title)
+        restDetail = findViewById(R.id.rest_detail)
         overlay = findViewById(R.id.overlay)
         modeText = findViewById(R.id.overlay_mode)
         titleText = findViewById(R.id.overlay_title)
@@ -149,6 +182,13 @@ class PlayerActivity : Activity() {
         super.onStart()
         if (isFinishing) return
         started = true
+        rules = kids.rules
+        watch = kids.state
+        lastTickAt = SystemClock.elapsedRealtime()
+        lastSavedAt = lastTickAt
+        // Rules first: when they say rest, the rest screen comes up and nothing starts playing.
+        checkRules()
+        handler.postDelayed(guardTick, GUARD_TICK_MS)
         startStreamServer()
         loadLibraryThenPlay()
     }
@@ -279,6 +319,8 @@ class PlayerActivity : Activity() {
         focusPausedPlayer = null
         loadGeneration++ // a load still running finishes into nothing
         if (::navigator.isInitialized) saveCurrentPosition()
+        countWatching()
+        kids.state = watch
         pendingPlay = null
         preloader.clear()
         releasePlayer()
@@ -379,6 +421,8 @@ class PlayerActivity : Activity() {
     private fun play(video: Video) {
         cancelPendingPlay()
         handler.removeCallbacks(preloadRefresh)
+        // Resting: the navigator already points at the video; it plays when the rest is over.
+        if (resting) return
         // Preloaded: it is already open, buffered and paused; only the picture needs attaching.
         preloader.take(video)?.let {
             showPreloaded(video, it)
@@ -621,15 +665,114 @@ class PlayerActivity : Activity() {
         mp.setTime(target)
     }
 
+    /** The parent screen (behind the PIN), which also leads to the manage screen. */
     private fun openManageScreen() {
-        saveCurrentPosition()
+        if (::navigator.isInitialized) saveCurrentPosition()
         continueCurrentOnStart = true
-        startActivity(SetupActivity.intent(this, manage = true))
+        startActivity(ParentActivity.intent(this))
+    }
+
+    // ---- parental rules ----
+
+    /** Adds the time a video has played since the last tick. */
+    private fun countWatching() {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        // Capped, so a stall of the main thread or a sleeping TV is not counted as watching.
+        val delta = (nowElapsed - lastTickAt).coerceIn(0, 2 * GUARD_TICK_MS)
+        lastTickAt = nowElapsed
+        val mp = player ?: return
+        if (resting || paused || !mp.isPlaying) return
+        val now = System.currentTimeMillis()
+        watch = KidsGuard.watched(rules, watch, delta, now, KidsStore.dayOf(now))
+        if (nowElapsed - lastSavedAt >= SAVE_EVERY_MS) {
+            lastSavedAt = nowElapsed
+            kids.state = watch
+        }
+    }
+
+    /** Counts watching, then starts or ends the rest screen as the rules say. */
+    private fun checkRules() {
+        if (!started) return
+        countWatching()
+        val now = System.currentTimeMillis()
+        val verdict = KidsGuard.check(rules, watch, now, KidsStore.dayOf(now), KidsStore.minuteOfDay(now))
+        if (verdict == Verdict.Allowed) {
+            if (resting) endRest()
+        } else {
+            if (!resting) startRest()
+            showRest(verdict, now)
+        }
+    }
+
+    private fun startRest() {
+        resting = true
+        kids.state = watch
+        if (::navigator.isInitialized) saveCurrentPosition()
+        cancelPendingPlay()
+        handler.removeCallbacks(preloadRefresh)
+        preloader.clear()
+        releasePlayer()
+        playingVideo = null
+        loadingScreen.animate().cancel()
+        loadingScreen.visibility = View.GONE
+        bufferingView.visibility = View.GONE
+        pausedIcon.visibility = View.GONE
+        overlay.animate().cancel()
+        overlay.alpha = 0f
+        restScreen.visibility = View.VISIBLE
+    }
+
+    private fun showRest(verdict: Verdict, now: Long) {
+        when (verdict) {
+            is Verdict.Break -> {
+                restTrain.scene = TrainLoadingView.Scene.PARKED
+                restTitle.setText(R.string.rest_break_title)
+                val left = ((verdict.until - now + 999) / 1000).coerceAtLeast(0)
+                restDetail.text = getString(R.string.rest_break_detail, "%d:%02d".format(left / 60, left % 60))
+            }
+            Verdict.TimeUp -> {
+                restTrain.scene = TrainLoadingView.Scene.NIGHT
+                restTitle.setText(R.string.rest_time_up_title)
+                restDetail.setText(R.string.rest_time_up_detail)
+            }
+            is Verdict.Bedtime -> {
+                restTrain.scene = TrainLoadingView.Scene.NIGHT
+                restTitle.setText(R.string.rest_bedtime_title)
+                restDetail.text = getString(R.string.rest_bedtime_detail, KidsStore.clock(verdict.endMin))
+            }
+            Verdict.Allowed -> Unit
+        }
+    }
+
+    private fun endRest() {
+        resting = false
+        restScreen.visibility = View.GONE
+        // Back to the video that was on (it resumes where it stopped), once the library is in.
+        if (::navigator.isInitialized && libVlc != null) {
+            navigator.current?.let(::play)
+        } else {
+            showLoadingScreen()
+        }
     }
 
     // ---- remote control ----
 
+    /** Back does nothing: this is the kids' home screen, and leaving it would open the TV's own. */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (!resting && ::navigator.isInitialized && player != null) showOverlay()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (resting) {
+            // Only the parent's way out: hold OK, or Menu.
+            when (keyCode) {
+                KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> if (event.repeatCount == 0) openManageScreen()
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> event.startTracking()
+                KeyEvent.KEYCODE_BACK -> return super.onKeyDown(keyCode, event)
+            }
+            return true
+        }
         // Until the background load is done, the player or the navigator may not exist yet.
         if (player == null || !::navigator.isInitialized) return super.onKeyDown(keyCode, event)
         val firstPress = event.repeatCount == 0
@@ -690,6 +833,10 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (resting && isCenterKey(keyCode)) {
+            openManageScreen()
+            return true
+        }
         if (player == null || !::navigator.isInitialized) return super.onKeyLongPress(keyCode, event)
         if (isCenterKey(keyCode)) {
             openManageScreen()
@@ -699,6 +846,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (resting && keyCode != KeyEvent.KEYCODE_BACK) return true
         if (player == null || !::navigator.isInitialized) return super.onKeyUp(keyCode, event)
         if (isCenterKey(keyCode)) {
             val wasLongPress = (event.flags and KeyEvent.FLAG_CANCELED_LONG_PRESS) != 0
@@ -789,6 +937,8 @@ class PlayerActivity : Activity() {
         const val RESCAN_AFTER_MS = 10 * 60_000L
         const val OVERLAY_MS = 4_000L
         const val LOADING_FADE_MS = 300L
+        const val GUARD_TICK_MS = 1_000L
+        const val SAVE_EVERY_MS = 15_000L
         const val TOAST_MS = 2_000L
         const val SEEK_MS = 10_000L
     }

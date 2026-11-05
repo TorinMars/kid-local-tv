@@ -91,6 +91,57 @@
         android:src="@drawable/ic_pause"
         android:visibility="gone" />
 
+    <!-- Parental rules: break time, bedtime, or no time left today. Covers everything. -->
+    <FrameLayout
+        android:id="@+id/rest_screen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <com.kidlocaltv.ui.TrainLoadingView
+            android:id="@+id/rest_train"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="48dp"
+            android:background="@drawable/overlay_bg"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingStart="36dp"
+            android:paddingTop="20dp"
+            android:paddingEnd="36dp"
+            android:paddingBottom="16dp">
+
+            <TextView
+                android:id="@+id/rest_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text"
+                android:textSize="34sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/rest_detail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="@color/text"
+                android:textSize="22sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/rest_parent_hint"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </FrameLayout>
+
     <TextView
         android:id="@+id/toast"
         android:layout_width="wrap_content"

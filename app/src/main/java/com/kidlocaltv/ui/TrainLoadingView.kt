@@ -14,8 +14,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Full-screen loading scene: a little train with a bear driver rolls through the hills, puffing
- * smoke, while the next video opens.
+ * Full-screen train scene. [Scene.MOVING]: a little train with a bear driver rolls through the
+ * hills, puffing smoke, while the next video opens. [Scene.PARKED]: the train stands still (break
+ * time). [Scene.NIGHT]: the train sleeps under the moon and stars (bedtime, or no time left today).
  *
  * Drawn with plain Canvas shapes (no images, no extra library) at about 30 frames per second, so
  * it costs little on a slow TV while LibVLC is busy opening the video. It animates only while it is
@@ -33,6 +34,10 @@ class TrainLoadingView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
     }
     private val sky = Paint()
+    private val zzz = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
     private val rect = RectF()
     private val farHill = Path()
     private val nearHill = Path()
@@ -41,12 +46,30 @@ class TrainLoadingView @JvmOverloads constructor(
     /** Scene width in scene units (the height is always [SCENE_H]). */
     private var sceneW = 1280f
     private var startedAt = SystemClock.uptimeMillis()
+    private var bearX = 0f
+    private var bearY = 0f
+
+    enum class Scene { MOVING, PARKED, NIGHT }
+
+    var scene: Scene = Scene.MOVING
+        set(value) {
+            if (field == value) return
+            field = value
+            updateSky()
+            invalidate()
+        }
+
+    private fun updateSky() {
+        val night = scene == Scene.NIGHT
+        sky.shader = LinearGradient(0f, 0f, 0f, HORIZON, if (night) NIGHT_TOP else SKY_TOP,
+            if (night) NIGHT_BOTTOM else SKY_BOTTOM, Shader.TileMode.CLAMP)
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         if (h == 0) return
         scale = h / SCENE_H
         sceneW = w / scale
-        sky.shader = LinearGradient(0f, 0f, 0f, HORIZON, SKY_TOP, SKY_BOTTOM, Shader.TileMode.CLAMP)
+        updateSky()
         hump(farHill, FAR_PERIOD, 520f, 110f)
         hump(nearHill, NEAR_PERIOD, 570f, 80f)
     }
@@ -60,20 +83,47 @@ class TrainLoadingView @JvmOverloads constructor(
         val t = (SystemClock.uptimeMillis() - startedAt) / 1000f
         canvas.save()
         canvas.scale(scale, scale)
-        drawBackground(canvas, t)
-        drawTrack(canvas, t)
-        drawTrain(canvas, t)
-        drawFlowers(canvas, t)
+        // Things that move with the train stop when it is parked or asleep; wind and smoke go on.
+        val m = if (scene == Scene.MOVING) t else 0f
+        drawBackground(canvas, t, m)
+        drawTrack(canvas, m)
+        drawTrain(canvas, t, m)
+        drawFlowers(canvas, m)
+        if (scene == Scene.NIGHT) drawNight(canvas, t)
         canvas.restore()
         // Keep going only while visible; a hidden view is not drawn, so this loop stops by itself.
-        if (isShown) postInvalidateDelayed(FRAME_MS)
+        // The rest scenes can stay up for hours (all night at bedtime) and move slowly: fewer frames.
+        if (isShown) postInvalidateDelayed(if (scene == Scene.MOVING) FRAME_MS else SLOW_FRAME_MS)
     }
 
     // ---- scenery ----
 
-    private fun drawBackground(c: Canvas, t: Float) {
+    private fun drawBackground(c: Canvas, t: Float, m: Float) {
         c.drawRect(0f, 0f, sceneW, SCENE_H, sky)
+        if (scene != Scene.NIGHT) drawSunAndClouds(c, t)
 
+        // Hills: far ones slow, near ones faster.
+        fill.color = FAR_HILL
+        tile(c, farHill, FAR_PERIOD, m * 30f)
+        fill.color = NEAR_HILL
+        tile(c, nearHill, NEAR_PERIOD, m * 70f)
+
+        // Grass.
+        fill.color = GRASS
+        c.drawRect(0f, 560f, sceneW, SCENE_H, fill)
+
+        // Trees beside the track pass quickly.
+        val treeShift = wrap(m * TRACK_SPEED * 0.75f, TREE_PERIOD)
+        var x = -treeShift
+        var n = 0
+        while (x < sceneW + TREE_PERIOD) {
+            tree(c, x + 60f, 572f, if (n % 3 == 1) 0.8f else 1f)
+            x += TREE_PERIOD
+            n++
+        }
+    }
+
+    private fun drawSunAndClouds(c: Canvas, t: Float) {
         // Sun with slowly turning rays.
         val sunX = sceneW * 0.84f
         val sunY = 120f
@@ -94,33 +144,47 @@ class TrainLoadingView @JvmOverloads constructor(
             val y = 90f + (i % 2) * 90f + i * 12f
             cloud(c, x, y, 1f - i * 0.12f)
         }
+    }
 
-        // Hills: far ones slow, near ones faster.
-        fill.color = FAR_HILL
-        tile(c, farHill, FAR_PERIOD, t * 30f)
-        fill.color = NEAR_HILL
-        tile(c, nearHill, NEAR_PERIOD, t * 70f)
-
-        // Grass.
-        fill.color = GRASS
-        c.drawRect(0f, 560f, sceneW, SCENE_H, fill)
-
-        // Trees beside the track pass quickly.
-        val treeShift = wrap(t * TRACK_SPEED * 0.75f, TREE_PERIOD)
-        var x = -treeShift
-        var n = 0
-        while (x < sceneW + TREE_PERIOD) {
-            tree(c, x + 60f, 572f, if (n % 3 == 1) 0.8f else 1f)
-            x += TREE_PERIOD
-            n++
+    /** Night: darken the land, then a moon, twinkling stars and the sleeping bear's Zzz. */
+    private fun drawNight(c: Canvas, t: Float) {
+        fill.color = NIGHT_DIM
+        c.drawRect(0f, 0f, sceneW, SCENE_H, fill)
+        for (i in 0 until 40) {
+            // Fixed pseudo-random places, so the stars don't jump between frames.
+            val x = ((i * 7919) % 1000) / 1000f * sceneW
+            val y = 20f + ((i * 104729) % 1000) / 1000f * 330f
+            val twinkle = 0.55f + 0.45f * sin(t * (1.5f + i % 5 * 0.4f) + i)
+            fill.color = STAR
+            fill.alpha = (twinkle * 255).toInt()
+            c.drawCircle(x, y, 2f + i % 3, fill)
+        }
+        fill.alpha = 255
+        val moonX = sceneW * 0.84f
+        fill.color = MOON_GLOW
+        c.drawCircle(moonX, 120f, 100f, fill)
+        c.drawCircle(moonX, 120f, 78f, fill)
+        fill.color = MOON
+        c.drawCircle(moonX, 120f, 58f, fill)
+        fill.color = MOON_SPOT
+        c.drawCircle(moonX - 18f, 108f, 11f, fill)
+        c.drawCircle(moonX + 20f, 134f, 8f, fill)
+        c.drawCircle(moonX + 6f, 96f, 5f, fill)
+        // Zzz rising from the bear, one after another.
+        zzz.textSize = 30f
+        for (k in 0 until 3) {
+            val p = ((t * 0.45f + k / 3f) % 1f)
+            zzz.alpha = ((1f - p) * 255).toInt()
+            zzz.textSize = 22f + p * 30f
+            c.drawText("Z", bearX + 24f + p * 70f, bearY - 30f - p * 120f, zzz)
         }
     }
 
-    private fun drawTrack(c: Canvas, t: Float) {
+    private fun drawTrack(c: Canvas, m: Float) {
         fill.color = GRAVEL
         c.drawRect(0f, 616f, sceneW, 640f, fill)
         fill.color = SLEEPER
-        val shift = wrap(t * TRACK_SPEED, SLEEPER_GAP)
+        val shift = wrap(m * TRACK_SPEED, SLEEPER_GAP)
         var x = -shift
         while (x < sceneW) {
             c.drawRect(x, 614f, x + 18f, 628f, fill)
@@ -131,10 +195,10 @@ class TrainLoadingView @JvmOverloads constructor(
     }
 
     /** Flowers in the front grass, passing fastest of all. */
-    private fun drawFlowers(c: Canvas, t: Float) {
+    private fun drawFlowers(c: Canvas, m: Float) {
         val colors = intArrayOf(BALL_RED, TRIM, BALL_WHITE, WAGON_PURPLE)
-        var x = -wrap(t * TRACK_SPEED * 1.4f, FLOWER_PERIOD)
-        var n = ((t * TRACK_SPEED * 1.4f) / FLOWER_PERIOD).toInt()
+        var x = -wrap(m * TRACK_SPEED * 1.4f, FLOWER_PERIOD)
+        var n = ((m * TRACK_SPEED * 1.4f) / FLOWER_PERIOD).toInt()
         while (x < sceneW + FLOWER_PERIOD) {
             val fx = x + (n * 37 % 60)
             val fy = 672f + (n % 3) * 14f
@@ -155,26 +219,26 @@ class TrainLoadingView @JvmOverloads constructor(
 
     // ---- the train ----
 
-    private fun drawTrain(c: Canvas, t: Float) {
+    private fun drawTrain(c: Canvas, t: Float, m: Float) {
         // The train rocks gently forwards and back, so it feels like it is working hard.
-        val left = (sceneW - TRAIN_LENGTH) / 2f + sin(t * 1.1f) * 18f
-        val travelled = t * TRACK_SPEED
+        val left = (sceneW - TRAIN_LENGTH) / 2f + sin(m * 1.1f) * 18f
+        val travelled = m * TRACK_SPEED
         val wagonColors = intArrayOf(WAGON_YELLOW, WAGON_GREEN, WAGON_PURPLE)
         for (i in 0 until 3) {
             val x = left + i * (WAGON_LENGTH + GAP)
-            val bob = bump(t, i * 0.7f)
+            val bob = bump(m, i * 0.7f)
             wagon(c, x, bob, wagonColors[i], i, t, travelled)
             // Coupler to the next car.
             fill.color = DARK
             c.drawRect(x + WAGON_LENGTH - 4f, 562f, x + WAGON_LENGTH + GAP + 4f, 570f, fill)
         }
-        locomotive(c, left + 3 * (WAGON_LENGTH + GAP), bump(t, 2.3f), t, travelled)
+        locomotive(c, left + 3 * (WAGON_LENGTH + GAP), bump(m, 2.3f), t, travelled)
     }
 
     private fun locomotive(c: Canvas, x: Float, bob: Float, t: Float, travelled: Float) {
         val y = bob
-        // Smoke first, so the chimney sits on top of the newest puff.
-        smoke(c, x + 255f, 398f + y, t)
+        // Smoke first, so the chimney sits on top of the newest puff. A sleeping train has none.
+        if (scene != Scene.NIGHT) smoke(c, x + 255f, 398f + y, t)
 
         fill.color = DARK
         c.drawRect(x + 6f, 552f + y, x + 300f, 578f + y, fill) // frame
@@ -210,7 +274,9 @@ class TrainLoadingView @JvmOverloads constructor(
         fill.color = WINDOW
         rect.set(x + 40f, 440f + y, x + 112f, 500f + y)
         c.drawRoundRect(rect, 12f, 12f, fill)
-        bear(c, x + 76f, 478f + y + sin(t * 6f) * 1.5f)
+        bearX = x + 76f
+        bearY = 478f + y + if (scene == Scene.MOVING) sin(t * 6f) * 1.5f else sin(t * 1.5f) * 1.5f
+        bear(c, bearX, bearY)
 
         // Wheels: two big driving wheels joined by a rod, one small front wheel.
         wheel(c, x + 70f, 586f + y, 24f, travelled)
@@ -294,8 +360,16 @@ class TrainLoadingView @JvmOverloads constructor(
         fill.color = BEAR_LIGHT
         c.drawCircle(cx + 2f, cy + 6f, 8f, fill)
         fill.color = DARK
-        c.drawCircle(cx - 6f, cy - 4f, 2.6f, fill)
-        c.drawCircle(cx + 8f, cy - 4f, 2.6f, fill)
+        if (scene == Scene.NIGHT) {
+            // Closed, sleepy eyes.
+            stroke.color = DARK
+            stroke.strokeWidth = 2.5f
+            c.drawLine(cx - 9f, cy - 4f, cx - 3f, cy - 4f, stroke)
+            c.drawLine(cx + 5f, cy - 4f, cx + 11f, cy - 4f, stroke)
+        } else {
+            c.drawCircle(cx - 6f, cy - 4f, 2.6f, fill)
+            c.drawCircle(cx + 8f, cy - 4f, 2.6f, fill)
+        }
         c.drawCircle(cx + 3f, cy + 3f, 2.8f, fill)
     }
 
@@ -364,6 +438,7 @@ class TrainLoadingView @JvmOverloads constructor(
         const val SCENE_H = 720f
         const val HORIZON = 520f
         const val FRAME_MS = 33L
+        const val SLOW_FRAME_MS = 66L
         const val TRACK_SPEED = 240f
         const val FAR_PERIOD = 640f
         const val NEAR_PERIOD = 420f
@@ -377,6 +452,13 @@ class TrainLoadingView @JvmOverloads constructor(
         const val PUFF_LIFE = 2.4f
         const val PUFFS = 8
 
+        const val NIGHT_TOP = 0xFF0B1638.toInt()
+        const val NIGHT_BOTTOM = 0xFF2B3D74.toInt()
+        const val NIGHT_DIM = 0x8C0A1230.toInt()
+        const val STAR = 0xFFFFF8D6.toInt()
+        const val MOON = 0xFFFFF3C4.toInt()
+        const val MOON_GLOW = 0x14FFF3C4
+        const val MOON_SPOT = 0xFFEADFAE.toInt()
         const val SKY_TOP = 0xFF6EC1F0.toInt()
         const val SKY_BOTTOM = 0xFFD4F1FF.toInt()
         const val SUN = 0xFFFFD54A.toInt()

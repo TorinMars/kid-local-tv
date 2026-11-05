@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The value of a setting row ("◀ 60 min ▶"); follows the row's focus (duplicateParentState). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape><solid android:color="#2E000000" /><corners android:radius="18dp" /></shape>
+    </item>
+    <item>
+        <shape><solid android:color="#2C3449" /><corners android:radius="18dp" /></shape>
+    </item>
+</selector>
